@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,11 +14,17 @@ router = Router(name='start')
 
 
 @router.message(CommandStart())
-async def start_handler(message: Message, session: AsyncSession, i18n: LocalizationManager) -> None:
+async def start_handler(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
     if message.from_user is None:
         return
 
     _, locale = await ensure_user_and_locale(message.from_user, session)
+    await state.clear()
 
     if locale is None:
         await message.answer(i18n.t(i18n.default_locale, 'language.select'), reply_markup=language_keyboard())

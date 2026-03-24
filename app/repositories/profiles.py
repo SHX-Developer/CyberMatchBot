@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import GameCode
+from app.database import GameCode, MlbbLaneCode
 from app.models import PlayerProfile, User
 
 
@@ -41,6 +41,29 @@ class ProfileRepository:
         profile.role = None
         profile.play_time = None
         profile.about = None
+        profile.game_player_id = None
+        profile.profile_image_file_id = None
+        profile.main_lane = None
+        profile.extra_lanes = None
+        profile.description = None
+        await self.session.flush()
+        return profile
+
+    async def save_mlbb_data(
+        self,
+        profile: PlayerProfile,
+        *,
+        game_player_id: str,
+        profile_image_file_id: str,
+        main_lane: MlbbLaneCode,
+        extra_lanes: list[MlbbLaneCode],
+        description: str,
+    ) -> PlayerProfile:
+        profile.game_player_id = game_player_id
+        profile.profile_image_file_id = profile_image_file_id
+        profile.main_lane = main_lane
+        profile.extra_lanes = [lane.value for lane in extra_lanes]
+        profile.description = description
         await self.session.flush()
         return profile
 
@@ -59,7 +82,7 @@ class ProfileRepository:
             select(PlayerProfile, User)
             .join(User, User.id == PlayerProfile.owner_id)
             .where(and_(PlayerProfile.game == game, PlayerProfile.owner_id != owner_id))
-            .order_by(PlayerProfile.created_at.desc())
+            .order_by(PlayerProfile.updated_at.desc())
             .limit(50)
         )
         result = await self.session.execute(stmt)

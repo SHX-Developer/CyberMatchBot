@@ -1,10 +1,10 @@
 import uuid
 
 from sqlalchemy import BigInteger, Enum, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, GameCode
+from app.database import Base, GameCode, MlbbLaneCode
 from app.models.mixins import TimestampMixin
 
 
@@ -23,9 +23,24 @@ class PlayerProfile(TimestampMixin, Base):
         nullable=False,
     )
 
+    # Legacy MVP fields kept for backward compatibility with existing data shape.
     rank: Mapped[str | None] = mapped_column(String(64), nullable=True)
     role: Mapped[str | None] = mapped_column(String(64), nullable=True)
     play_time: Mapped[str | None] = mapped_column(String(64), nullable=True)
     about: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Extended MLBB profile fields.
+    game_player_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profile_image_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    main_lane: Mapped[MlbbLaneCode | None] = mapped_column(
+        Enum(
+            MlbbLaneCode,
+            name='mlbb_lane_enum',
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=True,
+    )
+    extra_lanes: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     owner = relationship('User', back_populates='profiles')

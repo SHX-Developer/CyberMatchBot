@@ -10,3 +10,12 @@ class LanguageCode(str, Enum):
 class GameCode(str, Enum):
     MLBB = 'mlbb'
     CS_GO = 'cs_go'
+
+
+class MlbbLaneCode(str, Enum):
+    GOLD = 'gold_lane'
+    MID = 'mid_lane'
+    EXP = 'exp_lane'
+    JUNGLE = 'jungler'
+    ROAM = 'roamer'
+    ALL = 'all_lanes'

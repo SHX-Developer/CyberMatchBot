@@ -7,8 +7,10 @@ def main_menu_keyboard(i18n: LocalizationManager, locale: str) -> ReplyKeyboardM
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=i18n.t(locale, 'menu.find_teammate'))],
-            [KeyboardButton(text=i18n.t(locale, 'menu.my_profiles'))],
-            [KeyboardButton(text=i18n.t(locale, 'menu.profile'))],
+            [
+                KeyboardButton(text=i18n.t(locale, 'menu.my_profiles')),
+                KeyboardButton(text=i18n.t(locale, 'menu.profile')),
+            ],
         ],
         resize_keyboard=True,
     )

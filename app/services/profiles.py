@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import GameCode
+from app.database import GameCode, MlbbLaneCode
 from app.models import PlayerProfile, User
 from app.repositories import ProfileRepository
 
@@ -14,6 +14,13 @@ class ProfileService:
     async def has_any_profile(self, owner_id: int) -> bool:
         return (await self.profile_repo.count_by_owner(owner_id)) > 0
 
+    async def get_profile_for_game(self, owner_id: int, game: GameCode) -> PlayerProfile | None:
+        return await self.profile_repo.get_by_owner_and_game(owner_id, game)
+
+    async def get_profiles_indexed_by_game(self, owner_id: int) -> dict[GameCode, PlayerProfile]:
+        profiles = await self.profile_repo.list_by_owner(owner_id)
+        return {profile.game: profile for profile in profiles}
+
     async def create_profile_or_get_existing(self, owner_id: int, game: GameCode) -> tuple[PlayerProfile, bool]:
         existing = await self.profile_repo.get_by_owner_and_game(owner_id, game)
         if existing is not None:
@@ -24,6 +31,26 @@ class ProfileService:
 
     async def list_my_profiles(self, owner_id: int) -> list[PlayerProfile]:
         return await self.profile_repo.list_by_owner(owner_id)
+
+    async def save_mlbb_profile(
+        self,
+        *,
+        owner_id: int,
+        game_player_id: str,
+        profile_image_file_id: str,
+        main_lane: MlbbLaneCode,
+        extra_lanes: list[MlbbLaneCode],
+        description: str,
+    ) -> PlayerProfile:
+        profile, _ = await self.create_profile_or_get_existing(owner_id, GameCode.MLBB)
+        return await self.profile_repo.save_mlbb_data(
+            profile,
+            game_player_id=game_player_id,
+            profile_image_file_id=profile_image_file_id,
+            main_lane=main_lane,
+            extra_lanes=extra_lanes,
+            description=description,
+        )
 
     async def delete_owned_profile(self, owner_id: int, profile_id: uuid.UUID) -> bool:
         profile = await self.profile_repo.get_owned_profile(owner_id, profile_id)
