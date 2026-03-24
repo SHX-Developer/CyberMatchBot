@@ -1,0 +1,84 @@
+Metadata-Version: 2.4
+Name: cybermate-bot
+Version: 0.1.0
+Summary: CyberMate Telegram bot MVP
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: aiogram<4.0.0,>=3.13.1
+Requires-Dist: SQLAlchemy<3.0.0,>=2.0.32
+Requires-Dist: asyncpg<0.31.0,>=0.30.0
+Requires-Dist: alembic<2.0.0,>=1.13.2
+Requires-Dist: pydantic-settings<3.0.0,>=2.4.0
+Requires-Dist: python-dotenv<2.0.0,>=1.0.1
+
+# CyberMate Bot (MVP)
+
+Telegram-бот для поиска тиммейтов по играм (MVP).
+
+## Stack
+
+- Python 3.12+
+- aiogram 3
+- SQLAlchemy 2 (async)
+- PostgreSQL
+- Alembic
+- pydantic-settings + dotenv
+
+## Project structure
+
+```text
+app/
+  bot/
+  config/
+  database/
+  handlers/
+  keyboards/
+  locales/
+  middlewares/
+  models/
+  repositories/
+  services/
+  utils/
+alembic/
+```
+
+## Implemented MVP
+
+- /start
+- обязательный выбор языка при первом входе (ru/en/uz)
+- сохранение пользователя в БД
+- главное меню через Reply Keyboard
+- создание анкеты с выбором игры (MLBB, CS GO)
+- проверка "сначала создайте анкету" при поиске
+- раздел "Мои анкеты" (список, удаление, заполнить заново, добавление другой игры)
+- запрет дубликата анкеты по игре без подтверждения
+- раздел "Профиль" + статистика
+- настройки профиля + смена языка
+
+## Run
+
+1. Создай виртуальное окружение и установи зависимости:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+2. Подготовь `.env`:
+
+```bash
+cp .env.example .env
+```
+
+3. Подними PostgreSQL и примени миграции:
+
+```bash
+alembic upgrade head
+```
+
+4. Запусти бота:
+
+```bash
+python -m app.main
+```

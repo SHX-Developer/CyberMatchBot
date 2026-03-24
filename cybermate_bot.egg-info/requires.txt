@@ -1,0 +1,6 @@
+aiogram<4.0.0,>=3.13.1
+SQLAlchemy<3.0.0,>=2.0.32
+asyncpg<0.31.0,>=0.30.0
+alembic<2.0.0,>=1.13.2
+pydantic-settings<3.0.0,>=2.4.0
+python-dotenv<2.0.0,>=1.0.1
