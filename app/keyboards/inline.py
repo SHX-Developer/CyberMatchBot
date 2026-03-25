@@ -3,6 +3,17 @@ import uuid
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.constants import (
+    CB_PROFILE_BACK,
+    CB_PROFILE_EDIT,
+    CB_PROFILE_EDIT_AVATAR,
+    CB_PROFILE_EDIT_CANCEL,
+    CB_PROFILE_EDIT_FULL_NAME,
+    CB_PROFILE_EDIT_USERNAME,
+    CB_PROFILE_LANG_SET_PREFIX,
+    CB_PROFILE_LANGUAGE,
+    CB_PROFILE_STATS,
+)
 from app.database import GameCode, MlbbLaneCode
 from app.locales import LocalizationManager
 
@@ -157,4 +168,50 @@ def open_my_profiles_keyboard(i18n: LocalizationManager, locale: str) -> InlineK
     builder = InlineKeyboardBuilder()
     builder.button(text=i18n.t(locale, 'menu.my_profiles'), callback_data='my_profiles:open')
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def profile_actions_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'action.statistics'), callback_data=CB_PROFILE_STATS)
+    builder.button(text=i18n.t(locale, 'action.edit_data'), callback_data=CB_PROFILE_EDIT)
+    builder.button(text=i18n.t(locale, 'action.change_language'), callback_data=CB_PROFILE_LANGUAGE)
+    builder.adjust(1, 2)
+    return builder.as_markup()
+
+
+def profile_stats_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def profile_edit_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'action.edit_avatar'), callback_data=CB_PROFILE_EDIT_AVATAR)
+    builder.button(text=i18n.t(locale, 'action.edit_full_name'), callback_data=CB_PROFILE_EDIT_FULL_NAME)
+    builder.button(text=i18n.t(locale, 'action.edit_username'), callback_data=CB_PROFILE_EDIT_USERNAME)
+    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def profile_edit_cancel_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'action.cancel'), callback_data=CB_PROFILE_EDIT_CANCEL)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def profile_language_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for code, title in (
+        ('ru', '🇷🇺 Русский'),
+        ('uz', "🇺🇿 O'zbekcha"),
+        ('en', '🇬🇧 English'),
+    ):
+        builder.button(text=title, callback_data=f'{CB_PROFILE_LANG_SET_PREFIX}{code}')
+    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
+    builder.adjust(3, 1)
     return builder.as_markup()

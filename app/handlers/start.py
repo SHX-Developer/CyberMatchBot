@@ -32,7 +32,7 @@ async def start_handler(
 
     await message.answer(
         i18n.t(locale, 'start.welcome'),
-        reply_markup=main_menu_keyboard(i18n, locale),
+        reply_markup=main_menu_keyboard(),
     )
 
 
@@ -59,5 +59,5 @@ async def set_language_handler(callback: CallbackQuery, session: AsyncSession, i
     if callback.message:
         await callback.message.answer(
             i18n.t(locale, 'start.welcome'),
-            reply_markup=main_menu_keyboard(i18n, locale),
+            reply_markup=main_menu_keyboard(),
         )

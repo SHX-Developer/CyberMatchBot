@@ -8,14 +8,34 @@ from app.keyboards.inline import (
     my_profile_actions_keyboard,
     my_profiles_games_keyboard,
     open_my_profiles_keyboard,
+    profile_actions_keyboard,
+    profile_edit_cancel_keyboard,
+    profile_edit_keyboard,
+    profile_language_keyboard,
     profile_panel_keyboard,
+    profile_stats_keyboard,
     settings_keyboard,
 )
-from app.keyboards.reply import main_menu_keyboard
+from app.keyboards.main_menu import main_menu_keyboard
+from app.keyboards.reply import (
+    back_keyboard,
+    find_teammate_without_profiles_keyboard,
+    my_profiles_empty_keyboard,
+    profile_section_keyboard,
+)
 
 __all__ = (
     'language_keyboard',
     'main_menu_keyboard',
+    'back_keyboard',
+    'find_teammate_without_profiles_keyboard',
+    'my_profiles_empty_keyboard',
+    'profile_section_keyboard',
+    'profile_actions_keyboard',
+    'profile_stats_keyboard',
+    'profile_edit_keyboard',
+    'profile_edit_cancel_keyboard',
+    'profile_language_keyboard',
     'game_select_keyboard',
     'create_profile_for_game_keyboard',
     'my_profiles_games_keyboard',

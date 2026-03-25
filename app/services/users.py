@@ -41,3 +41,9 @@ class UserService:
             'stats': stats,
             'profiles_count': profiles_count,
         }
+
+    async def set_avatar_file_id(self, user_id: int, avatar_file_id: str | None) -> User | None:
+        return await self.user_repo.set_avatar_file_id(user_id, avatar_file_id)
+
+    async def set_full_name(self, user_id: int, full_name: str) -> User | None:
+        return await self.user_repo.set_full_name(user_id, full_name)

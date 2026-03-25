@@ -13,6 +13,8 @@ class UserStats(TimestampMixin, Base):
 
     likes_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     followers_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    subscriptions_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    friends_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     profile_views_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     mutual_likes_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 

@@ -9,15 +9,22 @@ class UserRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    @staticmethod
+    def _compose_full_name(first_name: str | None, last_name: str | None) -> str | None:
+        parts = [part.strip() for part in (first_name, last_name) if part and part.strip()]
+        return ' '.join(parts) if parts else None
+
     async def get_by_id(self, user_id: int) -> User | None:
         return await self.session.get(User, user_id)
 
     async def create_or_update(self, *, user_id: int, username: str | None, first_name: str | None, last_name: str | None) -> User:
         user = await self.get_by_id(user_id)
+        composed_full_name = self._compose_full_name(first_name, last_name)
         if user is None:
             user = User(
                 id=user_id,
                 username=username,
+                full_name=composed_full_name,
                 first_name=first_name,
                 last_name=last_name,
             )
@@ -29,6 +36,8 @@ class UserRepository:
         user.username = username
         user.first_name = first_name
         user.last_name = last_name
+        if not user.full_name:
+            user.full_name = composed_full_name
         await self.session.flush()
         return user
 
@@ -44,3 +53,19 @@ class UserRepository:
     async def get_stats(self, user_id: int) -> UserStats | None:
         stmt = select(UserStats).where(UserStats.user_id == user_id)
         return await self.session.scalar(stmt)
+
+    async def set_avatar_file_id(self, user_id: int, avatar_file_id: str | None) -> User | None:
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return None
+        user.avatar_file_id = avatar_file_id
+        await self.session.flush()
+        return user
+
+    async def set_full_name(self, user_id: int, full_name: str) -> User | None:
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return None
+        user.full_name = full_name
+        await self.session.flush()
+        return user

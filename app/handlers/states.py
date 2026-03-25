@@ -7,3 +7,8 @@ class MlbbProfileStates(StatesGroup):
     main_lane = State()
     extra_lanes = State()
     description = State()
+
+
+class ProfileStates(StatesGroup):
+    waiting_for_avatar = State()
+    waiting_for_full_name = State()

@@ -24,5 +24,5 @@ async def fallback_handler(message: Message, session: AsyncSession, i18n: Locali
 
     await message.answer(
         i18n.t(locale, 'start.welcome'),
-        reply_markup=main_menu_keyboard(i18n, locale),
+        reply_markup=main_menu_keyboard(),
     )
