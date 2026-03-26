@@ -21,7 +21,7 @@
   "action.back_to_profile": "⬅️ Назад в профиль",
   "action.edit_avatar": "🖼 Изменить аватарку",
   "action.edit_full_name": "📝 Изменить полное имя",
-  "action.edit_username": "📛 Изменить username",
+  "action.edit_username": "🔄 Обновить юзернейм",
   "action.cancel": "❌ Отмена",
   "action.done": "✅ Готово",
 
@@ -56,8 +56,11 @@
   "search.card.mlbb": "<b>🎮 Анкета игрока MLBB</b>\n\n<b>👤 Игрок:</b> {player_name}\n<b>🆔 ID:</b> <code>{game_player_id}</code>\n<b>⭐ Основная линия:</b> {main_lane}\n<b>🎯 Дополнительные линии:</b> {extra_lanes}\n<b>📝 Описание:</b>\n<i>{description}</i>\n\n<b>📅 Обновлено:</b> {updated_at}",
 
   "profile.card": "<b>👤 Профиль</b>\n\n<b>🆔 Telegram ID:</b> <code>{user_id}</code>\n<b>🔗 Username:</b> {username}\n<b>🌐 Язык:</b> {language}\n<b>📅 Регистрация:</b> {registered_at}\n<b>📋 Анкет:</b> {profiles_count}",
-  "profile.section.card": "<b>👤 Ваш профиль</b>\n\n<b>🆔 ID:</b> <code>{user_id}</code>\n<b>📛 Username:</b> {username}\n<b>📝 Полное имя:</b> {full_name}\n<b>📅 Дата регистрации:</b> {registered_at}\n<b>🗂 Анкеты:</b> {profiles_count}\n\n<b>❤️ Лайки:</b> {likes}\n<b>👥 Подписчики:</b> {followers}\n<b>⭐ Подписки:</b> {subscriptions}\n<b>🤝 Друзья:</b> {friends}",
-  "profile.section.stats": "<b>📊 Статистика профиля</b>\n\n<b>🆔 ID:</b> <code>{user_id}</code>\n<b>📛 Username:</b> {username}\n<b>📝 Полное имя:</b> {full_name}\n<b>📅 Дата регистрации:</b> {registered_at}\n\n<b>🗂 Анкеты:</b> {profiles_count}\n<b>❤️ Лайки:</b> {likes}\n<b>👥 Подписчики:</b> {followers}\n<b>⭐ Подписки:</b> {subscriptions}\n<b>🤝 Друзья:</b> {friends}",
+  "profile.section.card": "<b>👤 Ваш профиль</b>\n\n<b>🆔 ID:</b> <code>{user_id}</code>\n<b>🔗 Username:</b> {username}\n<b>📝 Полное имя:</b> {full_name}\n<b>📋 Анкеты:</b> {profiles_count}\n\n<b>❤️ Лайки:</b> {likes}\n<b>👥 Подписчики:</b> {followers}\n<b>⭐ Подписки:</b> {subscriptions}\n<b>🤝 Друзья:</b> {friends}\n\n<b>📅 Дата регистрации:</b> {registered_at}",
+  "profile.section.stats": "<b>📊 Статистика профиля</b>\n\n<b>📋 Анкеты:</b> {profiles_count}\n<b>❤️ Лайки:</b> {likes}\n<b>👥 Подписчики:</b> {followers}\n<b>⭐ Подписки:</b> {subscriptions}\n<b>🤝 Друзья:</b> {friends}",
+  "profile.section.stats.only": "<b>{title}</b>\n\n<b>📋 Анкеты:</b> {profiles_count}\n<b>❤️ Лайки:</b> {likes}\n<b>👥 Подписчики:</b> {followers}\n<b>⭐ Подписки:</b> {subscriptions}\n<b>🤝 Друзья:</b> {friends}",
+  "profile.stats.title": "📊 Статистика профиля",
+  "profile.stats.title.with_username": "📊 Статистика профиля {username}",
   "profile.username.missing": "Не указан",
   "profile.full_name.missing": "Не указано",
   "profile.language.ru": "Русский",
@@ -73,6 +76,7 @@
   "profile.edit.full_name.too_long": "Слишком длинное имя. Максимум: {max_len} символов.",
   "profile.edit.full_name.saved": "<b>✅ Полное имя обновлено</b>",
   "profile.edit.username.readonly": "Username берётся из Telegram и изменяется только в настройках Telegram.",
+  "profile.username.refreshed": "Юзернейм обновлён",
 
   "settings.title": "<b>⚙️ Настройки</b>\n\nВыберите, что хотите изменить.",
   "settings.choose_language": "<b>🌐 Смена языка</b>\n\nВыберите новый язык.",

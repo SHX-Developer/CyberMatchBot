@@ -2,9 +2,10 @@ from html import escape
 from pathlib import Path
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import (
@@ -52,13 +53,13 @@ async def _require_locale(message: Message, session: AsyncSession, i18n: Localiz
     return user_id, locale
 
 
-def _username_text(raw_username: str | None, locale: str, i18n: LocalizationManager) -> str:
+def _username_value(raw_username: str | None, locale: str, i18n: LocalizationManager) -> str:
     if raw_username:
         return f'@{escape(raw_username)}'
     return i18n.t(locale, 'profile.username.missing')
 
 
-def _full_name_text(raw_full_name: str | None, locale: str, i18n: LocalizationManager) -> str:
+def _full_name_value(raw_full_name: str | None, locale: str, i18n: LocalizationManager) -> str:
     if raw_full_name and raw_full_name.strip():
         return escape(raw_full_name.strip())
     return i18n.t(locale, 'profile.full_name.missing')
@@ -76,77 +77,33 @@ def _stats_values(payload: dict[str, object]) -> tuple[int, int, int, int]:
     return likes, followers, subscriptions, friends
 
 
-def _profile_text(
-    *,
-    i18n: LocalizationManager,
-    locale: str,
-    user_id: int,
-    username: str,
-    full_name: str,
-    registered_at: str,
-    profiles_count: int,
-    likes: int,
-    followers: int,
-    subscriptions: int,
-    friends: int,
-) -> str:
-    return i18n.t(
-        locale,
-        'profile.section.card',
-        user_id=user_id,
-        username=username,
-        full_name=full_name,
-        registered_at=registered_at,
-        profiles_count=profiles_count,
-        likes=likes,
-        followers=followers,
-        subscriptions=subscriptions,
-        friends=friends,
-    )
+def _avatar_source(user) -> str | FSInputFile:
+    avatar_file_id = getattr(user, 'avatar_file_id', None)
+    if avatar_file_id:
+        return avatar_file_id
+    return FSInputFile(DEFAULT_AVATAR_PATH)
 
 
-def _profile_stats_text(
-    *,
-    i18n: LocalizationManager,
-    locale: str,
-    user_id: int,
-    username: str,
-    full_name: str,
-    registered_at: str,
-    profiles_count: int,
-    likes: int,
-    followers: int,
-    subscriptions: int,
-    friends: int,
-) -> str:
-    return i18n.t(
-        locale,
-        'profile.section.stats',
-        user_id=user_id,
-        username=username,
-        full_name=full_name,
-        registered_at=registered_at,
-        profiles_count=profiles_count,
-        likes=likes,
-        followers=followers,
-        subscriptions=subscriptions,
-        friends=friends,
-    )
-
-
-async def _send_profile_card(message: Message, user_id: int, locale: str, session: AsyncSession, i18n: LocalizationManager) -> None:
+async def _avatar_source_by_user_id(user_id: int, session: AsyncSession) -> str | FSInputFile:
     payload = await UserService(session).get_profile_stats(user_id)
     user = payload.get('user')
     if user is None:
-        return
+        return FSInputFile(DEFAULT_AVATAR_PATH)
+    return _avatar_source(user)
+
+
+def _profile_caption(*, i18n: LocalizationManager, locale: str, payload: dict[str, object]) -> str | None:
+    user = payload.get('user')
+    if user is None:
+        return None
 
     likes, followers, subscriptions, friends = _stats_values(payload)
-    caption = _profile_text(
-        i18n=i18n,
-        locale=locale,
+    return i18n.t(
+        locale,
+        'profile.section.card',
         user_id=user.id,
-        username=_username_text(user.username, locale, i18n),
-        full_name=_full_name_text(user.full_name, locale, i18n),
+        username=_username_value(user.username, locale, i18n),
+        full_name=_full_name_value(user.full_name, locale, i18n),
         registered_at=format_datetime(user.registered_at, locale).split(' ')[0],
         profiles_count=int(payload.get('profiles_count', 0) or 0),
         likes=likes,
@@ -155,19 +112,151 @@ async def _send_profile_card(message: Message, user_id: int, locale: str, sessio
         friends=friends,
     )
 
-    avatar = user.avatar_file_id if user.avatar_file_id else FSInputFile(DEFAULT_AVATAR_PATH)
-    await message.answer_photo(
-        photo=avatar,
+
+def _stats_caption(*, i18n: LocalizationManager, locale: str, payload: dict[str, object]) -> str | None:
+    user = payload.get('user')
+    if user is None:
+        return None
+
+    username_title = _username_value(user.username, locale, i18n) if user.username else ''
+    title = i18n.t(locale, 'profile.stats.title')
+    if username_title:
+        title = i18n.t(locale, 'profile.stats.title.with_username', username=username_title)
+
+    likes, followers, subscriptions, friends = _stats_values(payload)
+    return i18n.t(
+        locale,
+        'profile.section.stats.only',
+        title=title,
+        profiles_count=int(payload.get('profiles_count', 0) or 0),
+        likes=likes,
+        followers=followers,
+        subscriptions=subscriptions,
+        friends=friends,
+    )
+
+
+async def _remember_message(state: FSMContext, message: Message) -> None:
+    await state.update_data(profile_message_chat_id=message.chat.id, profile_message_id=message.message_id)
+
+
+async def _remember_prompt_message(state: FSMContext, message: Message) -> None:
+    await state.update_data(prompt_message_chat_id=message.chat.id, prompt_message_id=message.message_id)
+
+
+async def _message_ref(state: FSMContext) -> tuple[int, int] | None:
+    data = await state.get_data()
+    chat_id = data.get('profile_message_chat_id')
+    message_id = data.get('profile_message_id')
+    if not isinstance(chat_id, int) or not isinstance(message_id, int):
+        return None
+    return chat_id, message_id
+
+
+async def _prompt_message_ref(state: FSMContext) -> tuple[int, int] | None:
+    data = await state.get_data()
+    chat_id = data.get('prompt_message_chat_id')
+    message_id = data.get('prompt_message_id')
+    if not isinstance(chat_id, int) or not isinstance(message_id, int):
+        return None
+    return chat_id, message_id
+
+
+async def _delete_prompt_message(message: Message, state: FSMContext) -> None:
+    ref = await _prompt_message_ref(state)
+    if ref is None:
+        return
+    chat_id, message_id = ref
+    try:
+        await message.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except TelegramBadRequest:
+        pass
+
+
+async def _edit_profile_message(
+    *,
+    bot_message: Message,
+    photo: str | FSInputFile,
+    caption: str | None,
+    reply_markup,
+) -> None:
+    media = InputMediaPhoto(
+        media=photo,
+        caption=caption,
+        parse_mode='HTML' if caption else None,
+    )
+    try:
+        await bot_message.edit_media(media=media, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        if 'message is not modified' not in str(exc):
+            raise
+
+
+async def _edit_profile_message_by_ref(
+    *,
+    message: Message,
+    state: FSMContext,
+    photo: str | FSInputFile,
+    caption: str | None,
+    reply_markup,
+) -> None:
+    ref = await _message_ref(state)
+    if ref is None:
+        return
+
+    chat_id, message_id = ref
+    media = InputMediaPhoto(
+        media=photo,
+        caption=caption,
+        parse_mode='HTML' if caption else None,
+    )
+    try:
+        await message.bot.edit_message_media(
+            chat_id=chat_id,
+            message_id=message_id,
+            media=media,
+            reply_markup=reply_markup,
+        )
+    except TelegramBadRequest as exc:
+        if 'message is not modified' not in str(exc):
+            raise
+
+
+async def _render_profile(
+    *,
+    display_message: Message,
+    state: FSMContext,
+    user_id: int,
+    locale: str,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+    use_edit: bool,
+) -> None:
+    payload = await UserService(session).get_profile_stats(user_id)
+    caption = _profile_caption(i18n=i18n, locale=locale, payload=payload)
+    if caption is None:
+        return
+    user = payload.get('user')
+    if user is None:
+        return
+    photo = _avatar_source(user)
+
+    if use_edit:
+        await _edit_profile_message(
+            bot_message=display_message,
+            photo=photo,
+            caption=caption,
+            reply_markup=profile_actions_keyboard(i18n, locale),
+        )
+        await _remember_message(state, display_message)
+        return
+
+    sent = await display_message.answer_photo(
+        photo=photo,
         caption=caption,
         reply_markup=profile_actions_keyboard(i18n, locale),
     )
-
-
-async def _send_edit_menu(message: Message, locale: str, i18n: LocalizationManager) -> None:
-    await message.answer(
-        i18n.t(locale, 'profile.edit.title'),
-        reply_markup=profile_edit_keyboard(i18n, locale),
-    )
+    await _remember_message(state, sent)
 
 
 @router.message(F.text == BTN_PROFILE)
@@ -183,7 +272,15 @@ async def profile_handler(
         return
 
     user_id, locale = payload
-    await _send_profile_card(message, user_id, locale, session, i18n)
+    await _render_profile(
+        display_message=message,
+        state=state,
+        user_id=user_id,
+        locale=locale,
+        session=session,
+        i18n=i18n,
+        use_edit=False,
+    )
 
 
 @router.callback_query(F.data == CB_PROFILE_BACK)
@@ -193,7 +290,7 @@ async def profile_back_handler(
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
     user_id, locale = await ensure_user_and_locale(callback.from_user, session)
@@ -203,8 +300,15 @@ async def profile_back_handler(
         return
 
     await callback.answer()
-    if isinstance(callback.message, Message):
-        await _send_profile_card(callback.message, user_id, locale, session, i18n)
+    await _render_profile(
+        display_message=callback.message,
+        state=state,
+        user_id=user_id,
+        locale=locale,
+        session=session,
+        i18n=i18n,
+        use_edit=True,
+    )
 
 
 @router.callback_query(F.data == CB_PROFILE_STATS)
@@ -214,7 +318,7 @@ async def profile_stats_handler(
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
     user_id, locale = await ensure_user_and_locale(callback.from_user, session)
@@ -224,29 +328,20 @@ async def profile_stats_handler(
         return
 
     payload = await UserService(session).get_profile_stats(user_id)
-    user = payload.get('user')
-    if user is None:
+    caption = _stats_caption(i18n=i18n, locale=locale, payload=payload)
+    if caption is None:
         await callback.answer()
         return
 
-    likes, followers, subscriptions, friends = _stats_values(payload)
-    text = _profile_stats_text(
-        i18n=i18n,
-        locale=locale,
-        user_id=user.id,
-        username=_username_text(user.username, locale, i18n),
-        full_name=_full_name_text(user.full_name, locale, i18n),
-        registered_at=format_datetime(user.registered_at, locale).split(' ')[0],
-        profiles_count=int(payload.get('profiles_count', 0) or 0),
-        likes=likes,
-        followers=followers,
-        subscriptions=subscriptions,
-        friends=friends,
-    )
-
     await callback.answer()
-    if isinstance(callback.message, Message):
-        await callback.message.answer(text, reply_markup=profile_stats_keyboard(i18n, locale))
+    photo = await _avatar_source_by_user_id(user_id, session)
+    await _edit_profile_message(
+        bot_message=callback.message,
+        photo=photo,
+        caption=caption,
+        reply_markup=profile_stats_keyboard(i18n, locale),
+    )
+    await _remember_message(state, callback.message)
 
 
 @router.callback_query(F.data == CB_PROFILE_EDIT)
@@ -256,7 +351,7 @@ async def profile_edit_handler(
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
     _, locale = await ensure_user_and_locale(callback.from_user, session)
@@ -266,8 +361,14 @@ async def profile_edit_handler(
         return
 
     await callback.answer()
-    if isinstance(callback.message, Message):
-        await _send_edit_menu(callback.message, locale, i18n)
+    photo = await _avatar_source_by_user_id(callback.from_user.id, session)
+    await _edit_profile_message(
+        bot_message=callback.message,
+        photo=photo,
+        caption=i18n.t(locale, 'profile.edit.title'),
+        reply_markup=profile_edit_keyboard(i18n, locale),
+    )
+    await _remember_message(state, callback.message)
 
 
 @router.callback_query(F.data == CB_PROFILE_EDIT_AVATAR)
@@ -277,7 +378,7 @@ async def profile_edit_avatar_handler(
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
     _, locale = await ensure_user_and_locale(callback.from_user, session)
@@ -287,11 +388,12 @@ async def profile_edit_avatar_handler(
 
     await state.set_state(ProfileStates.waiting_for_avatar)
     await callback.answer()
-    if isinstance(callback.message, Message):
-        await callback.message.answer(
-            i18n.t(locale, 'profile.edit.avatar.prompt'),
-            reply_markup=profile_edit_cancel_keyboard(i18n, locale),
-        )
+    prompt = await callback.message.answer(
+        i18n.t(locale, 'profile.edit.avatar.prompt'),
+        reply_markup=profile_edit_cancel_keyboard(i18n, locale),
+    )
+    await _remember_prompt_message(state, prompt)
+    await _remember_message(state, callback.message)
 
 
 @router.callback_query(F.data == CB_PROFILE_EDIT_FULL_NAME)
@@ -301,7 +403,7 @@ async def profile_edit_full_name_handler(
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
     _, locale = await ensure_user_and_locale(callback.from_user, session)
@@ -311,33 +413,40 @@ async def profile_edit_full_name_handler(
 
     await state.set_state(ProfileStates.waiting_for_full_name)
     await callback.answer()
-    if isinstance(callback.message, Message):
-        await callback.message.answer(
-            i18n.t(locale, 'profile.edit.full_name.prompt'),
-            reply_markup=profile_edit_cancel_keyboard(i18n, locale),
-        )
+    prompt = await callback.message.answer(
+        i18n.t(locale, 'profile.edit.full_name.prompt'),
+        reply_markup=profile_edit_cancel_keyboard(i18n, locale),
+    )
+    await _remember_prompt_message(state, prompt)
+    await _remember_message(state, callback.message)
 
 
 @router.callback_query(F.data == CB_PROFILE_EDIT_USERNAME)
-async def profile_edit_username_info_handler(
+async def profile_refresh_username_handler(
     callback: CallbackQuery,
+    state: FSMContext,
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
-    _, locale = await ensure_user_and_locale(callback.from_user, session)
+    user_id, locale = await ensure_user_and_locale(callback.from_user, session)
+    await state.clear()
     if locale is None:
         await callback.answer()
         return
 
-    await callback.answer()
-    if isinstance(callback.message, Message):
-        await callback.message.answer(
-            i18n.t(locale, 'profile.edit.username.readonly'),
-            reply_markup=profile_stats_keyboard(i18n, locale),
-        )
+    await callback.answer(i18n.t(locale, 'profile.username.refreshed'))
+    await _render_profile(
+        display_message=callback.message,
+        state=state,
+        user_id=user_id,
+        locale=locale,
+        session=session,
+        i18n=i18n,
+        use_edit=True,
+    )
 
 
 @router.callback_query(F.data == CB_PROFILE_EDIT_CANCEL)
@@ -347,18 +456,20 @@ async def profile_edit_cancel_handler(
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
     _, locale = await ensure_user_and_locale(callback.from_user, session)
+    await state.clear()
     if locale is None:
         await callback.answer()
         return
 
-    await state.clear()
     await callback.answer()
-    if isinstance(callback.message, Message):
-        await _send_edit_menu(callback.message, locale, i18n)
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
 
 
 @router.message(StateFilter(ProfileStates.waiting_for_avatar), F.photo)
@@ -374,23 +485,34 @@ async def profile_avatar_save_handler(
 
     user_id, locale = payload
     if not message.photo:
-        await message.answer(
-            i18n.t(locale, 'profile.edit.avatar.invalid'),
-            reply_markup=profile_edit_cancel_keyboard(i18n, locale),
-        )
+        await message.answer(i18n.t(locale, 'profile.edit.avatar.invalid'))
         return
 
-    file_id = message.photo[-1].file_id
-    await UserService(session).set_avatar_file_id(user_id, file_id)
-    await state.clear()
+    await UserService(session).set_avatar_file_id(user_id, message.photo[-1].file_id)
+    await _delete_prompt_message(message, state)
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
 
-    await message.answer(i18n.t(locale, 'profile.edit.avatar.saved'))
-    await _send_profile_card(message, user_id, locale, session, i18n)
+    await _edit_profile_message_by_ref(
+        message=message,
+        state=state,
+        photo=await _avatar_source_by_user_id(user_id, session),
+        caption=_profile_caption(
+            i18n=i18n,
+            locale=locale,
+            payload=await UserService(session).get_profile_stats(user_id),
+        ),
+        reply_markup=profile_actions_keyboard(i18n, locale),
+    )
+    await state.clear()
 
 
 @router.message(StateFilter(ProfileStates.waiting_for_avatar))
 async def profile_avatar_invalid_handler(
     message: Message,
+    state: FSMContext,
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
@@ -399,10 +521,7 @@ async def profile_avatar_invalid_handler(
         return
 
     _, locale = payload
-    await message.answer(
-        i18n.t(locale, 'profile.edit.avatar.invalid'),
-        reply_markup=profile_edit_cancel_keyboard(i18n, locale),
-    )
+    await message.answer(i18n.t(locale, 'profile.edit.avatar.invalid'))
 
 
 @router.message(StateFilter(ProfileStates.waiting_for_full_name))
@@ -419,23 +538,32 @@ async def profile_full_name_save_handler(
     user_id, locale = payload
     full_name_raw = (message.text or '').strip()
     if not full_name_raw:
-        await message.answer(
-            i18n.t(locale, 'profile.edit.full_name.empty'),
-            reply_markup=profile_edit_cancel_keyboard(i18n, locale),
-        )
+        await message.answer(i18n.t(locale, 'profile.edit.full_name.empty'))
         return
 
     if len(full_name_raw) > FULL_NAME_MAX_LENGTH:
-        await message.answer(
-            i18n.t(locale, 'profile.edit.full_name.too_long', max_len=FULL_NAME_MAX_LENGTH),
-            reply_markup=profile_edit_cancel_keyboard(i18n, locale),
-        )
+        await message.answer(i18n.t(locale, 'profile.edit.full_name.too_long', max_len=FULL_NAME_MAX_LENGTH))
         return
 
     await UserService(session).set_full_name(user_id, full_name_raw)
+    await _delete_prompt_message(message, state)
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
+
+    await _edit_profile_message_by_ref(
+        message=message,
+        state=state,
+        photo=await _avatar_source_by_user_id(user_id, session),
+        caption=_profile_caption(
+            i18n=i18n,
+            locale=locale,
+            payload=await UserService(session).get_profile_stats(user_id),
+        ),
+        reply_markup=profile_actions_keyboard(i18n, locale),
+    )
     await state.clear()
-    await message.answer(i18n.t(locale, 'profile.edit.full_name.saved'))
-    await _send_profile_card(message, user_id, locale, session, i18n)
 
 
 @router.callback_query(F.data == CB_PROFILE_LANGUAGE)
@@ -445,7 +573,7 @@ async def profile_language_handler(
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
     _, locale = await ensure_user_and_locale(callback.from_user, session)
@@ -455,11 +583,14 @@ async def profile_language_handler(
         return
 
     await callback.answer()
-    if isinstance(callback.message, Message):
-        await callback.message.answer(
-            i18n.t(locale, 'profile.language.choose'),
-            reply_markup=profile_language_keyboard(i18n, locale),
-        )
+    photo = await _avatar_source_by_user_id(callback.from_user.id, session)
+    await _edit_profile_message(
+        bot_message=callback.message,
+        photo=photo,
+        caption=None,
+        reply_markup=profile_language_keyboard(i18n, locale),
+    )
+    await _remember_message(state, callback.message)
 
 
 @router.callback_query(F.data.startswith(CB_PROFILE_LANG_SET_PREFIX))
@@ -469,7 +600,7 @@ async def profile_set_language_handler(
     session: AsyncSession,
     i18n: LocalizationManager,
 ) -> None:
-    if callback.from_user is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
     user_id, locale = await ensure_user_and_locale(callback.from_user, session)
@@ -487,6 +618,12 @@ async def profile_set_language_handler(
 
     await UserService(session).set_language(user_id, new_language)
     await callback.answer(i18n.t(new_language.value, 'language.changed'))
-
-    if isinstance(callback.message, Message):
-        await _send_profile_card(callback.message, user_id, new_language.value, session, i18n)
+    await _render_profile(
+        display_message=callback.message,
+        state=state,
+        user_id=user_id,
+        locale=new_language.value,
+        session=session,
+        i18n=i18n,
+        use_edit=True,
+    )

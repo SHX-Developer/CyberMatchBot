@@ -9,7 +9,7 @@ Telegram-бот для поиска тиммейтов по играм (MVP).
 - SQLAlchemy 2 (async)
 - PostgreSQL
 - Alembic
-- pydantic-settings + dotenv
+- python-dotenv
 
 ## Project structure
 

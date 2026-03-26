@@ -55,15 +55,22 @@ class ProfileRepository:
         *,
         game_player_id: str,
         profile_image_file_id: str,
+        rank: str | None,
+        role: str | None,
+        server: str | None,
         main_lane: MlbbLaneCode,
         extra_lanes: list[MlbbLaneCode],
         description: str,
     ) -> PlayerProfile:
         profile.game_player_id = game_player_id
         profile.profile_image_file_id = profile_image_file_id
+        profile.rank = rank
+        profile.role = role
+        profile.play_time = server
         profile.main_lane = main_lane
         profile.extra_lanes = [lane.value for lane in extra_lanes]
         profile.description = description
+        profile.about = description
         await self.session.flush()
         return profile
 

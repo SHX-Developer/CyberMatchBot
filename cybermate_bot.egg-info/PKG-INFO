@@ -4,11 +4,11 @@ Version: 0.1.0
 Summary: CyberMate Telegram bot MVP
 Requires-Python: >=3.12
 Description-Content-Type: text/markdown
-Requires-Dist: aiogram<4.0.0,>=3.13.1
+Requires-Dist: aiogram==3.13.1
 Requires-Dist: SQLAlchemy<3.0.0,>=2.0.32
+Requires-Dist: greenlet<4.0.0,>=3.1.1
 Requires-Dist: asyncpg<0.31.0,>=0.30.0
 Requires-Dist: alembic<2.0.0,>=1.13.2
-Requires-Dist: pydantic-settings<3.0.0,>=2.4.0
 Requires-Dist: python-dotenv<2.0.0,>=1.0.1
 
 # CyberMate Bot (MVP)
@@ -22,7 +22,7 @@ Telegram-бот для поиска тиммейтов по играм (MVP).
 - SQLAlchemy 2 (async)
 - PostgreSQL
 - Alembic
-- pydantic-settings + dotenv
+- python-dotenv
 
 ## Project structure
 

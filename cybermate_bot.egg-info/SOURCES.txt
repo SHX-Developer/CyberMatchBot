@@ -35,11 +35,16 @@ app/models/__init__.py
 app/models/mixins.py
 app/models/player_profile.py
 app/models/user.py
+app/models/user_like.py
+app/models/user_message.py
 app/models/user_stats.py
+app/models/user_subscription.py
 app/repositories/__init__.py
+app/repositories/interactions.py
 app/repositories/profiles.py
 app/repositories/users.py
 app/services/__init__.py
+app/services/interactions.py
 app/services/profiles.py
 app/services/users.py
 app/utils/__init__.py

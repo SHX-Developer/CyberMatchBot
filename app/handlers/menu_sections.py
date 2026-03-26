@@ -6,22 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.constants import (
     BTN_BACK,
     BTN_CREATE_PROFILE,
-    BTN_FIND_TEAMMATE,
     BTN_LIKES,
     BTN_MESSAGES,
-    BTN_MY_PROFILES,
     BTN_SUBSCRIPTIONS,
 )
 from app.handlers.context import ensure_user_and_locale
-from app.keyboards import (
-    back_keyboard,
-    find_teammate_without_profiles_keyboard,
-    language_keyboard,
-    main_menu_keyboard,
-    my_profiles_empty_keyboard,
-)
+from app.keyboards import back_keyboard, language_keyboard, main_menu_keyboard
 from app.locales import LocalizationManager
-from app.services import ProfileService
 
 router = Router(name='menu_sections')
 
@@ -56,30 +47,6 @@ async def back_to_main_menu_handler(
 
     _, locale = payload
     await _show_main_menu(message, locale, i18n)
-
-
-@router.message(F.text == BTN_FIND_TEAMMATE)
-async def find_teammate_handler(
-    message: Message,
-    state: FSMContext,
-    session: AsyncSession,
-    i18n: LocalizationManager,
-) -> None:
-    payload = await _require_locale(message, session, i18n)
-    await state.clear()
-    if payload is None:
-        return
-
-    user_id, _ = payload
-    profile_service = ProfileService(session)
-    if not await profile_service.has_any_profile(user_id):
-        await message.answer(
-            'Сначала создайте анкету, чтобы искать тиммейтов.',
-            reply_markup=find_teammate_without_profiles_keyboard(),
-        )
-        return
-
-    await message.answer('Раздел поиска тиммейтов.', reply_markup=back_keyboard())
 
 
 @router.message(F.text == BTN_MESSAGES)
@@ -125,30 +92,6 @@ async def subscriptions_handler(
         return
 
     await message.answer('У вас пока нет подписок.', reply_markup=back_keyboard())
-
-
-@router.message(F.text == BTN_MY_PROFILES)
-async def my_profiles_handler(
-    message: Message,
-    state: FSMContext,
-    session: AsyncSession,
-    i18n: LocalizationManager,
-) -> None:
-    payload = await _require_locale(message, session, i18n)
-    await state.clear()
-    if payload is None:
-        return
-
-    user_id, _ = payload
-    profile_service = ProfileService(session)
-    if not await profile_service.has_any_profile(user_id):
-        await message.answer(
-            'У вас пока нет анкет. Создайте первую анкету.',
-            reply_markup=my_profiles_empty_keyboard(),
-        )
-        return
-
-    await message.answer('Раздел анкет пользователя.', reply_markup=back_keyboard())
 
 
 @router.message(F.text == BTN_CREATE_PROFILE)
