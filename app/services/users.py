@@ -47,3 +47,28 @@ class UserService:
 
     async def set_full_name(self, user_id: int, full_name: str) -> User | None:
         return await self.user_repo.set_full_name(user_id, full_name)
+
+    async def notification_settings(self, user_id: int) -> dict[str, bool]:
+        user = await self.user_repo.get_by_id(user_id)
+        if user is None:
+            return {
+                'likes': True,
+                'subscriptions': True,
+                'messages': True,
+            }
+        return {
+            'likes': bool(getattr(user, 'notify_likes', True)),
+            'subscriptions': bool(getattr(user, 'notify_subscriptions', True)),
+            'messages': bool(getattr(user, 'notify_messages', True)),
+        }
+
+    async def toggle_notification(self, user_id: int, kind: str) -> bool | None:
+        mapping = {
+            'likes': 'notify_likes',
+            'subscriptions': 'notify_subscriptions',
+            'messages': 'notify_messages',
+        }
+        field = mapping.get(kind)
+        if field is None:
+            return None
+        return await self.user_repo.toggle_notification(user_id, field)

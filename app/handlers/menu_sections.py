@@ -106,4 +106,4 @@ async def create_profile_stub_handler(
     if payload is None:
         return
 
-    await message.answer('Создание анкеты будет добавлено в следующем этапе.', reply_markup=back_keyboard())
+    await message.answer('Создание профиля будет добавлено в следующем этапе.', reply_markup=back_keyboard())

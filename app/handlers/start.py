@@ -13,6 +13,17 @@ from app.services import UserService
 router = Router(name='start')
 
 
+async def _sync_avatar_from_telegram(user_id: int, message: Message, user_service: UserService) -> None:
+    try:
+        photos = await message.bot.get_user_profile_photos(user_id=user_id, limit=1)
+    except Exception:
+        return
+    avatar_file_id: str | None = None
+    if photos.photos:
+        avatar_file_id = photos.photos[0][-1].file_id
+    await user_service.set_avatar_file_id(user_id, avatar_file_id)
+
+
 @router.message(CommandStart())
 async def start_handler(
     message: Message,
@@ -23,7 +34,9 @@ async def start_handler(
     if message.from_user is None:
         return
 
-    _, locale = await ensure_user_and_locale(message.from_user, session)
+    user_id, locale = await ensure_user_and_locale(message.from_user, session)
+    user_service = UserService(session)
+    await _sync_avatar_from_telegram(user_id, message, user_service)
     await state.clear()
 
     if locale is None:

@@ -10,6 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import (
     BTN_PROFILE,
+    PROFILE_IMAGE_FILE_ID,
+    PROFILE_EDIT_IMAGE_FILE_ID,
+    PROFILE_LANGUAGE_IMAGE_FILE_ID,
+    PROFILE_NOTIFICATIONS_IMAGE_FILE_ID,
+    PROFILE_STATS_IMAGE_FILE_ID,
     CB_PROFILE_BACK,
     CB_PROFILE_EDIT,
     CB_PROFILE_EDIT_AVATAR,
@@ -18,7 +23,12 @@ from app.constants import (
     CB_PROFILE_EDIT_USERNAME,
     CB_PROFILE_LANG_SET_PREFIX,
     CB_PROFILE_LANGUAGE,
+    CB_PROFILE_NOTIFICATIONS,
+    CB_PROFILE_NOTIF_LIKES,
+    CB_PROFILE_NOTIF_MESSAGES,
+    CB_PROFILE_NOTIF_SUBS,
     CB_PROFILE_STATS,
+    CB_PROFILE_STATS_REFRESH,
 )
 from app.database import LanguageCode
 from app.handlers.context import ensure_user_and_locale
@@ -29,6 +39,7 @@ from app.keyboards import (
     profile_edit_cancel_keyboard,
     profile_edit_keyboard,
     profile_language_keyboard,
+    profile_notifications_keyboard,
     profile_stats_keyboard,
 )
 from app.locales import LocalizationManager
@@ -38,6 +49,10 @@ from app.utils import format_datetime
 router = Router(name='profile')
 
 DEFAULT_AVATAR_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'default_avatar.png'
+ASSETS_DIR = Path(__file__).resolve().parent.parent / 'assets'
+PROFILE_STATS_IMAGE_PATH = ASSETS_DIR / 'statistics.png'
+PROFILE_NOTIFICATIONS_IMAGE_PATH = ASSETS_DIR / 'notifications.png'
+PROFILE_LANGUAGE_IMAGE_PATH = ASSETS_DIR / 'language.png'
 FULL_NAME_MAX_LENGTH = 70
 
 
@@ -81,15 +96,19 @@ def _avatar_source(user) -> str | FSInputFile:
     avatar_file_id = getattr(user, 'avatar_file_id', None)
     if avatar_file_id:
         return avatar_file_id
-    return FSInputFile(DEFAULT_AVATAR_PATH)
+    return PROFILE_IMAGE_FILE_ID
 
 
 async def _avatar_source_by_user_id(user_id: int, session: AsyncSession) -> str | FSInputFile:
     payload = await UserService(session).get_profile_stats(user_id)
     user = payload.get('user')
     if user is None:
-        return FSInputFile(DEFAULT_AVATAR_PATH)
+        return PROFILE_IMAGE_FILE_ID
     return _avatar_source(user)
+
+
+def _image_or_default(path: Path) -> FSInputFile:
+    return FSInputFile(path if path.exists() else DEFAULT_AVATAR_PATH)
 
 
 def _profile_caption(*, i18n: LocalizationManager, locale: str, payload: dict[str, object]) -> str | None:
@@ -98,18 +117,15 @@ def _profile_caption(*, i18n: LocalizationManager, locale: str, payload: dict[st
         return None
 
     likes, followers, subscriptions, friends = _stats_values(payload)
-    return i18n.t(
-        locale,
-        'profile.section.card',
-        user_id=user.id,
-        username=_username_value(user.username, locale, i18n),
-        full_name=_full_name_value(user.full_name, locale, i18n),
-        registered_at=format_datetime(user.registered_at, locale).split(' ')[0],
-        profiles_count=int(payload.get('profiles_count', 0) or 0),
-        likes=likes,
-        followers=followers,
-        subscriptions=subscriptions,
-        friends=friends,
+    return (
+        "<b>👤 Профиль</b>\n\n"
+        f"<b>🔗 Username:</b> {_username_value(user.username, locale, i18n)}\n"
+        f"<b>🎭 Никнейм:</b> {_full_name_value(user.full_name, locale, i18n)}\n\n"
+        f"<b>❤️ Лайки:</b> {likes}\n"
+        f"<b>👥 Подписчики:</b> {followers}\n"
+        f"<b>⭐ Подписки:</b> {subscriptions}\n"
+        f"<b>🤝 Друзья:</b> {friends}\n\n"
+        f"<b>📅 Дата регистрации:</b> {format_datetime(user.registered_at, locale).split(' ')[0]}"
     )
 
 
@@ -118,22 +134,26 @@ def _stats_caption(*, i18n: LocalizationManager, locale: str, payload: dict[str,
     if user is None:
         return None
 
-    username_title = _username_value(user.username, locale, i18n) if user.username else ''
-    title = i18n.t(locale, 'profile.stats.title')
-    if username_title:
-        title = i18n.t(locale, 'profile.stats.title.with_username', username=username_title)
-
     likes, followers, subscriptions, friends = _stats_values(payload)
-    return i18n.t(
-        locale,
-        'profile.section.stats.only',
-        title=title,
-        profiles_count=int(payload.get('profiles_count', 0) or 0),
-        likes=likes,
-        followers=followers,
-        subscriptions=subscriptions,
-        friends=friends,
+    return (
+        f"<b>📊 Статистика профиля {_username_value(user.username, locale, i18n)}</b>\n\n"
+        f"<b>📋 Профили:</b> {int(payload.get('profiles_count', 0) or 0)}\n\n"
+        f"<b>❤️ Лайки:</b> {likes}\n\n"
+        f"<b>👥 Подписчики:</b> {followers}\n\n"
+        f"<b>⭐ Подписки:</b> {subscriptions}\n\n"
+        f"<b>🤝 Друзья:</b> {friends}"
     )
+
+
+async def _sync_avatar_from_telegram(*, user_id: int, message: Message, session: AsyncSession) -> None:
+    try:
+        photos = await message.bot.get_user_profile_photos(user_id=user_id, limit=1)
+    except TelegramBadRequest:
+        return
+    avatar_file_id: str | None = None
+    if photos.photos:
+        avatar_file_id = photos.photos[0][-1].file_id
+    await UserService(session).set_avatar_file_id(user_id, avatar_file_id)
 
 
 async def _remember_message(state: FSMContext, message: Message) -> None:
@@ -232,6 +252,7 @@ async def _render_profile(
     i18n: LocalizationManager,
     use_edit: bool,
 ) -> None:
+    await _sync_avatar_from_telegram(user_id=user_id, message=display_message, session=session)
     payload = await UserService(session).get_profile_stats(user_id)
     caption = _profile_caption(i18n=i18n, locale=locale, payload=payload)
     if caption is None:
@@ -327,6 +348,7 @@ async def profile_stats_handler(
         await callback.answer()
         return
 
+    await _sync_avatar_from_telegram(user_id=user_id, message=callback.message, session=session)
     payload = await UserService(session).get_profile_stats(user_id)
     caption = _stats_caption(i18n=i18n, locale=locale, payload=payload)
     if caption is None:
@@ -334,7 +356,7 @@ async def profile_stats_handler(
         return
 
     await callback.answer()
-    photo = await _avatar_source_by_user_id(user_id, session)
+    photo = PROFILE_STATS_IMAGE_FILE_ID
     await _edit_profile_message(
         bot_message=callback.message,
         photo=photo,
@@ -342,6 +364,16 @@ async def profile_stats_handler(
         reply_markup=profile_stats_keyboard(i18n, locale),
     )
     await _remember_message(state, callback.message)
+
+
+@router.callback_query(F.data == CB_PROFILE_STATS_REFRESH)
+async def profile_stats_refresh_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    await profile_stats_handler(callback, state, session, i18n)
 
 
 @router.callback_query(F.data == CB_PROFILE_EDIT)
@@ -361,7 +393,7 @@ async def profile_edit_handler(
         return
 
     await callback.answer()
-    photo = await _avatar_source_by_user_id(callback.from_user.id, session)
+    photo = PROFILE_EDIT_IMAGE_FILE_ID
     await _edit_profile_message(
         bot_message=callback.message,
         photo=photo,
@@ -414,7 +446,7 @@ async def profile_edit_full_name_handler(
     await state.set_state(ProfileStates.waiting_for_full_name)
     await callback.answer()
     prompt = await callback.message.answer(
-        i18n.t(locale, 'profile.edit.full_name.prompt'),
+        '✏️ Введите новый никнейм:',
         reply_markup=profile_edit_cancel_keyboard(i18n, locale),
     )
     await _remember_prompt_message(state, prompt)
@@ -538,11 +570,11 @@ async def profile_full_name_save_handler(
     user_id, locale = payload
     full_name_raw = (message.text or '').strip()
     if not full_name_raw:
-        await message.answer(i18n.t(locale, 'profile.edit.full_name.empty'))
+        await message.answer('Никнейм не может быть пустым.')
         return
 
     if len(full_name_raw) > FULL_NAME_MAX_LENGTH:
-        await message.answer(i18n.t(locale, 'profile.edit.full_name.too_long', max_len=FULL_NAME_MAX_LENGTH))
+        await message.answer(f'Никнейм слишком длинный. Максимум {FULL_NAME_MAX_LENGTH} символов.')
         return
 
     await UserService(session).set_full_name(user_id, full_name_raw)
@@ -583,12 +615,81 @@ async def profile_language_handler(
         return
 
     await callback.answer()
-    photo = await _avatar_source_by_user_id(callback.from_user.id, session)
+    photo = PROFILE_LANGUAGE_IMAGE_FILE_ID
     await _edit_profile_message(
         bot_message=callback.message,
         photo=photo,
-        caption=None,
+        caption='<b>🌐 Выберите язык</b>',
         reply_markup=profile_language_keyboard(i18n, locale),
+    )
+    await _remember_message(state, callback.message)
+
+
+@router.callback_query(F.data == CB_PROFILE_NOTIFICATIONS)
+async def profile_notifications_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+
+    _, locale = await ensure_user_and_locale(callback.from_user, session)
+    await state.clear()
+    if locale is None:
+        await callback.answer()
+        return
+
+    await callback.answer()
+    photo = PROFILE_NOTIFICATIONS_IMAGE_FILE_ID
+    settings = await UserService(session).notification_settings(callback.from_user.id)
+    await _edit_profile_message(
+        bot_message=callback.message,
+        photo=photo,
+        caption='<b>🔔 Настройки уведомлений</b>\n\nСкоро здесь можно будет всё настроить.',
+        reply_markup=profile_notifications_keyboard(i18n, locale, settings),
+    )
+    await _remember_message(state, callback.message)
+
+
+@router.callback_query(F.data.in_({CB_PROFILE_NOTIF_LIKES, CB_PROFILE_NOTIF_SUBS, CB_PROFILE_NOTIF_MESSAGES}))
+async def profile_notifications_toggle_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+
+    _, locale = await ensure_user_and_locale(callback.from_user, session)
+    if locale is None:
+        await callback.answer()
+        return
+
+    kind_map = {
+        CB_PROFILE_NOTIF_LIKES: 'likes',
+        CB_PROFILE_NOTIF_SUBS: 'subscriptions',
+        CB_PROFILE_NOTIF_MESSAGES: 'messages',
+    }
+    kind = kind_map.get(callback.data or '')
+    if kind is None:
+        await callback.answer('Ошибка', show_alert=True)
+        return
+
+    current = await UserService(session).toggle_notification(callback.from_user.id, kind)
+    if current is None:
+        await callback.answer('Не удалось обновить', show_alert=True)
+        return
+
+    await callback.answer('Включено' if current else 'Отключено')
+    settings = await UserService(session).notification_settings(callback.from_user.id)
+    await _edit_profile_message(
+        bot_message=callback.message,
+        photo=PROFILE_NOTIFICATIONS_IMAGE_FILE_ID,
+        caption='<b>🔔 Настройки уведомлений</b>\n\nСкоро здесь можно будет всё настроить.',
+        reply_markup=profile_notifications_keyboard(i18n, locale, settings),
     )
     await _remember_message(state, callback.message)
 

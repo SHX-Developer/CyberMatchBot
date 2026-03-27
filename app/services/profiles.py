@@ -81,3 +81,12 @@ class ProfileService:
 
     async def search_profiles(self, owner_id: int, game: GameCode) -> list[tuple[PlayerProfile, User]]:
         return await self.profile_repo.search_by_game(owner_id, game)
+
+    async def mlbb_id_exists(self, game_player_id: str, *, exclude_owner_id: int | None = None) -> bool:
+        return await self.profile_repo.mlbb_id_exists(game_player_id, exclude_owner_id=exclude_owner_id)
+
+    async def update_mlbb_profile_fields(self, owner_id: int, **fields) -> PlayerProfile | None:
+        profile = await self.profile_repo.get_by_owner_and_game(owner_id, GameCode.MLBB)
+        if profile is None:
+            return None
+        return await self.profile_repo.update_profile_fields(profile, **fields)

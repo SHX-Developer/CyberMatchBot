@@ -7,5 +7,5 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=title) for title in row] for row in MAIN_MENU_ROWS],
         resize_keyboard=True,
-        is_persistent=True,
+        is_persistent=False,
     )

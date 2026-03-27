@@ -25,6 +25,8 @@ from app.constants import (
     CB_SEARCH_SUB_PREFIX,
     CB_SEARCH_VIEW_LIKER_PREFIX,
     CB_SEARCH_VIEW_PROFILE_PREFIX,
+    SEARCH_GAME_PICK_IMAGE_FILE_ID,
+    MY_PROFILES_CREATE_IMAGE_FILE_ID,
 )
 from app.database import GameCode, MlbbLaneCode
 from app.handlers.context import ensure_user_and_locale
@@ -33,18 +35,24 @@ from app.keyboards import (
     main_menu_keyboard,
     search_empty_keyboard,
     search_game_pick_keyboard,
+    search_hide_keyboard,
     search_like_notice_keyboard,
+    search_message_notice_keyboard,
     search_message_cancel_keyboard,
+    my_profiles_create_game_keyboard,
     search_need_profile_keyboard,
     search_profile_actions_keyboard,
     search_profile_notice_keyboard,
+    search_subscription_notice_keyboard,
 )
 from app.locales import LocalizationManager
 from app.services import InteractionService, ProfileService, UserService
+from app.utils import format_datetime
 
 router = Router(name='search')
 
 DEFAULT_AVATAR_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'default_avatar.png'
+SEARCH_IMAGE_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'search.png'
 
 
 def _lane_title(raw: str | None) -> str:
@@ -82,23 +90,32 @@ def _username(user) -> str:
 
 def _search_card_text(profile, user) -> str:
     return (
-        "<b>🎮 Анкета игрока</b>\n\n"
-        f"<b>👤 Игрок:</b> {escape(_full_name(user))}\n"
-        f"<b>🔗 Username:</b> {escape(_username(user))}\n"
+        f"<b>🎮 Профиль игрока {escape(_full_name(user))}</b>\n\n"
         f"<b>🆔 ID:</b> <code>{escape(profile.game_player_id or 'Не указано')}</code>\n"
+        f"<b>🌍 Сервер:</b> {escape(profile.play_time or 'Не указано')}\n\n"
         f"<b>🎖 Ранг:</b> {escape(profile.rank or 'Не указано')}\n"
         f"<b>🛡 Основная линия:</b> {escape(_lane_title(profile.main_lane.value if profile.main_lane else None))}\n"
-        f"<b>🎯 Доп. линии:</b> {escape(_extra_lanes_text(profile.extra_lanes))}\n"
-        f"<b>🌍 Сервер:</b> {escape(profile.play_time or 'Не указано')}\n"
+        f"<b>🎯 Доп. линии:</b> {escape(_extra_lanes_text(profile.extra_lanes))}\n\n"
         f"<b>📝 О себе:</b> {escape(profile.description or 'Не указано')}"
     )
 
 
-def _profile_text(user) -> str:
+def _profile_text(payload: dict[str, object]) -> str:
+    user = payload.get('user')
+    if user is None:
+        return '<b>Профиль недоступен</b>'
+    stats = payload.get('stats')
+    likes = int(getattr(stats, 'likes_count', 0) or 0) if stats is not None else 0
+    followers = int(getattr(stats, 'followers_count', 0) or 0) if stats is not None else 0
+    subscriptions = int(getattr(stats, 'subscriptions_count', 0) or 0) if stats is not None else 0
+    friends = int(getattr(stats, 'friends_count', 0) or 0) if stats is not None else 0
     return (
-        "<b>👤 Профиль пользователя</b>\n\n"
-        f"<b>📝 Имя:</b> {escape(_full_name(user))}\n"
-        f"<b>🔗 Username:</b> {escape(_username(user))}"
+        f"<b>👤 {escape(_full_name(user))}</b>\n\n"
+        f"<b>❤️ Лайки:</b> {likes}\n"
+        f"<b>👥 Подписчики:</b> {followers}\n"
+        f"<b>⭐ Подписки:</b> {subscriptions}\n"
+        f"<b>🤝 Друзья:</b> {friends}\n\n"
+        f"<b>📅 Дата регистрации:</b> {format_datetime(user.registered_at, 'ru').split(' ')[0]}"
     )
 
 
@@ -156,11 +173,11 @@ async def _show_next_profile(
     if not found:
         try:
             await message.edit_text(
-                '😕 Пока больше анкет не найдено. Попробуйте позже.',
+                '😕 Пока больше профилей не найдено. Попробуйте позже.',
                 reply_markup=search_empty_keyboard(game=game),
             )
         except TelegramBadRequest:
-            await message.answer('😕 Пока больше анкет не найдено. Попробуйте позже.', reply_markup=search_empty_keyboard(game=game))
+            await message.answer('😕 Пока больше профилей не найдено. Попробуйте позже.', reply_markup=search_empty_keyboard(game=game))
         return
 
     data = await state.get_data()
@@ -173,11 +190,11 @@ async def _show_next_profile(
         elif len(found) == 1:
             try:
                 await message.edit_text(
-                    '😕 Пока больше анкет не найдено. Попробуйте позже.',
+                    '😕 Пока больше профилей не найдено. Попробуйте позже.',
                     reply_markup=search_empty_keyboard(game=game),
                 )
             except TelegramBadRequest:
-                await message.answer('😕 Пока больше анкет не найдено. Попробуйте позже.', reply_markup=search_empty_keyboard(game=game))
+                await message.answer('😕 Пока больше профилей не найдено. Попробуйте позже.', reply_markup=search_empty_keyboard(game=game))
             return
 
     profile, owner = random.choice(pool)
@@ -214,22 +231,30 @@ async def find_teammate_entry(
 
     if not await ProfileService(session).has_any_profile(user_id):
         await message.answer(
-            '⚠️ Сначала создайте анкету, чтобы искать тиммейтов.',
+            '⚠️ Сначала создайте профиль, чтобы искать тиммейтов.',
             reply_markup=search_need_profile_keyboard(),
         )
         return
 
-    await message.answer('🎮 Выберите игру для поиска', reply_markup=search_game_pick_keyboard())
+    await message.answer_photo(
+        photo=SEARCH_GAME_PICK_IMAGE_FILE_ID,
+        caption='🎮 Выберите игру для поиска',
+        reply_markup=search_game_pick_keyboard(),
+    )
 
 
 @router.callback_query(F.data == CB_SEARCH_CREATE_PROFILE)
-async def search_create_profile_hint(callback: CallbackQuery) -> None:
-    if not isinstance(callback.message, Message):
+async def search_create_profile_hint(callback: CallbackQuery, session: AsyncSession) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         return
+
+    await ensure_user_and_locale(callback.from_user, session)
     await callback.answer()
-    await callback.message.edit_text(
-        'Откройте раздел «🗂 Мои анкеты» в главном меню и создайте анкету Mobile Legends.',
-        reply_markup=search_need_profile_keyboard(),
+    await callback.message.answer_photo(
+        photo=MY_PROFILES_CREATE_IMAGE_FILE_ID,
+        caption="<b>🎮 Выберите игру для создания профиля</b>",
+        parse_mode="HTML",
+        reply_markup=my_profiles_create_game_keyboard(games=[GameCode.MLBB]),
     )
 
 
@@ -313,12 +338,17 @@ async def search_like(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.answer('Вы уже лайкнули этого пользователя', show_alert=True)
         return
 
-    await callback.answer('Лайк отправлен ❤️')
-    await callback.bot.send_message(
-        to_user_id,
-        '❤️ Вас лайкнули!\n\nНажмите «Посмотреть», чтобы открыть анкету.',
-        reply_markup=search_like_notice_keyboard(liker_user_id=from_user_id, game=game),
-    )
+    await callback.answer('Лайк отправлен ❤️', show_alert=False)
+    to_user_settings = await UserService(session).notification_settings(to_user_id)
+    if to_user_settings.get('likes', True):
+        from_user = await UserService(session).get_user(from_user_id)
+        from_name = escape(_full_name(from_user)) if from_user else 'Пользователь'
+        await callback.bot.send_message(
+            to_user_id,
+            f'❤️ Ваш профиль понравился {from_name}',
+            parse_mode='HTML',
+            reply_markup=search_like_notice_keyboard(liker_user_id=from_user_id, game=game),
+        )
 
     if await interactions.is_mutual_like(from_user_id, to_user_id, game):
         users = UserService(session)
@@ -326,16 +356,21 @@ async def search_like(callback: CallbackQuery, session: AsyncSession) -> None:
         second = await users.get_user(to_user_id)
         if first and second:
             for receiver, other in ((from_user_id, second), (to_user_id, first)):
+                receiver_settings = await users.notification_settings(receiver)
+                if not receiver_settings.get('likes', True):
+                    continue
                 text = "🔥 <b>Взаимные лайки!</b>\nПриятно проведите время!"
                 if other.username:
                     text += f"\nЮзернейм: @{escape(other.username)}"
                     builder = InlineKeyboardBuilder()
                     builder.button(text='💬 Перейти в ЛС', url=f'https://t.me/{other.username}')
+                    builder.button(text='🗑 Скрыть', callback_data=CB_SEARCH_HIDE_NOTICE)
                     keyboard = builder.as_markup()
                 else:
                     text += '\nУ пользователя нет username. Напишите ему через бот.'
                     builder = InlineKeyboardBuilder()
                     builder.button(text='💬 Отправить сообщение', callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{other.id}')
+                    builder.button(text='🗑 Скрыть', callback_data=CB_SEARCH_HIDE_NOTICE)
                     keyboard = builder.as_markup()
                 await callback.bot.send_message(receiver, text, parse_mode='HTML', reply_markup=keyboard)
 
@@ -360,7 +395,7 @@ async def search_view_liker(callback: CallbackQuery, state: FSMContext, session:
     profile = await ProfileService(session).get_profile_for_game(liker_id, game)
     user = await UserService(session).get_user(liker_id)
     if profile is None or user is None:
-        await callback.answer('Эта анкета больше недоступна.', show_alert=True)
+        await callback.answer('Этот профиль больше недоступен.', show_alert=True)
         return
 
     subscribed = await InteractionService(session).is_subscribed(user_id, liker_id)
@@ -414,7 +449,7 @@ async def search_toggle_sub(callback: CallbackQuery, state: FSMContext, session:
         )
     else:
         await callback.message.edit_reply_markup(
-            reply_markup=search_profile_notice_keyboard(user_id=target_id, subscribed=subscribed_now)
+            reply_markup=search_profile_notice_keyboard(user_id=target_id, subscribed=subscribed_now, game=game)
         )
 
     if subscribed_now:
@@ -422,12 +457,14 @@ async def search_toggle_sub(callback: CallbackQuery, state: FSMContext, session:
         follower = await users.get_user(follower_id)
         follower_name = escape(_full_name(follower)) if follower else 'Пользователь'
         target_subscribed = await interactions.is_subscribed(target_id, follower_id)
-        await callback.bot.send_message(
-            target_id,
-            f'⭐ На вас подписались!\nПодписчик: {follower_name}',
-            parse_mode='HTML',
-            reply_markup=search_profile_notice_keyboard(user_id=follower_id, subscribed=target_subscribed),
-        )
+        target_settings = await users.notification_settings(target_id)
+        if target_settings.get('subscriptions', True):
+            await callback.bot.send_message(
+                target_id,
+                f'⭐ На вас подписался {follower_name}',
+                parse_mode='HTML',
+                reply_markup=search_subscription_notice_keyboard(user_id=follower_id),
+            )
 
 
 @router.callback_query(F.data.startswith(CB_SEARCH_MESSAGE_PREFIX))
@@ -448,7 +485,8 @@ async def search_start_message(callback: CallbackQuery, state: FSMContext, sessi
     await state.set_state(SearchStates.waiting_for_message_text)
     await state.update_data(search_message_target_user_id=target_id)
     await callback.answer()
-    await callback.message.answer('💬 Введите сообщение для отправки пользователю.', reply_markup=search_message_cancel_keyboard())
+    prompt = await callback.message.answer('💬 Введите сообщение для отправки пользователю.', reply_markup=search_message_cancel_keyboard())
+    await state.update_data(search_message_prompt_chat_id=prompt.chat.id, search_message_prompt_message_id=prompt.message_id)
 
 
 @router.callback_query(F.data == CB_SEARCH_CANCEL_MESSAGE)
@@ -479,19 +517,37 @@ async def search_send_message(message: Message, state: FSMContext, session: Asyn
         await message.answer('Введите текст сообщения или нажмите «❌ Отменить».', reply_markup=search_message_cancel_keyboard())
         return
 
+    prompt_chat_id = data.get('search_message_prompt_chat_id')
+    prompt_message_id = data.get('search_message_prompt_message_id')
+    if isinstance(prompt_chat_id, int) and isinstance(prompt_message_id, int):
+        try:
+            await message.bot.delete_message(chat_id=prompt_chat_id, message_id=prompt_message_id)
+        except TelegramBadRequest:
+            pass
+
     interactions = InteractionService(session)
     await interactions.create_message(from_user_id, target_id, text)
     sender = await UserService(session).get_user(from_user_id)
     sender_name = escape(_full_name(sender)) if sender else 'Пользователь'
-    target_subscribed = await interactions.is_subscribed(target_id, from_user_id)
-    await message.bot.send_message(
-        target_id,
-        f"📩 <b>Вам пришло новое сообщение!</b>\nОт: {sender_name}\n\n{escape(text)}",
-        parse_mode='HTML',
-        reply_markup=search_profile_notice_keyboard(user_id=from_user_id, subscribed=target_subscribed),
-    )
+    target_settings = await UserService(session).notification_settings(target_id)
+    if target_settings.get('messages', True):
+        await message.bot.send_message(
+            target_id,
+            f"📩 <b>Сообщение от {sender_name}</b>\n\n{escape(text)}",
+            parse_mode='HTML',
+            reply_markup=search_message_notice_keyboard(user_id=from_user_id, game=GameCode.MLBB),
+        )
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
+
     await state.clear()
-    await message.answer('✅ Сообщение отправлено.')
+    await message.bot.send_message(chat_id=message.chat.id, text=
+        f"✅ Ваше сообщение отправлено пользователю.\n\n<b>Ваше сообщение:</b>\n{escape(text)}",
+        parse_mode='HTML',
+        reply_markup=search_hide_keyboard(),
+    )
 
 
 @router.callback_query(F.data.startswith(CB_SEARCH_VIEW_PROFILE_PREFIX))
@@ -510,9 +566,11 @@ async def search_view_profile(callback: CallbackQuery, session: AsyncSession) ->
         await callback.answer('Профиль недоступен', show_alert=True)
         return
     subscribed = await InteractionService(session).is_subscribed(viewer_id, target_id)
+    payload = await UserService(session).get_profile_stats(target_id)
     await callback.answer()
-    await callback.message.edit_text(
-        _profile_text(target),
+    await callback.message.answer_photo(
+        photo=target.avatar_file_id or FSInputFile(DEFAULT_AVATAR_PATH),
+        caption=_profile_text(payload),
         parse_mode='HTML',
         reply_markup=search_profile_notice_keyboard(user_id=target_id, subscribed=subscribed),
     )

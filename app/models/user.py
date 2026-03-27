@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Enum, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, LanguageCode
@@ -15,6 +15,9 @@ class User(Base):
     avatar_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    notify_likes: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
+    notify_subscriptions: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
+    notify_messages: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     language_code: Mapped[LanguageCode | None] = mapped_column(
         Enum(
             LanguageCode,

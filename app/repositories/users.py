@@ -69,3 +69,14 @@ class UserRepository:
         user.full_name = full_name
         await self.session.flush()
         return user
+
+    async def toggle_notification(self, user_id: int, field: str) -> bool | None:
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return None
+        if field not in {'notify_likes', 'notify_subscriptions', 'notify_messages'}:
+            return None
+        current = bool(getattr(user, field, True))
+        setattr(user, field, not current)
+        await self.session.flush()
+        return bool(getattr(user, field))

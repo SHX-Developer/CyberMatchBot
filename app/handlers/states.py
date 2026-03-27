@@ -17,6 +17,13 @@ class ProfileStates(StatesGroup):
 class ProfilesSectionStates(StatesGroup):
     creating_profile = State()
     editing_profile_field = State()
+    edit_waiting_photo = State()
+    edit_waiting_id = State()
+    edit_waiting_rank = State()
+    edit_waiting_main_lane = State()
+    edit_waiting_extra_lanes = State()
+    edit_waiting_server = State()
+    edit_waiting_about = State()
     mlbb_waiting_photo = State()
     mlbb_waiting_game_id = State()
     mlbb_waiting_rank = State()

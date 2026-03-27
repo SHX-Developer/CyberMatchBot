@@ -7,7 +7,7 @@ def _reply_markup(rows: tuple[tuple[str, ...], ...]) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=title) for title in row] for row in rows],
         resize_keyboard=True,
-        is_persistent=True,
+        is_persistent=False,
     )
 
 

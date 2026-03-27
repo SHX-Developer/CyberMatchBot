@@ -84,6 +84,12 @@ class ProfileRepository:
         await self.session.delete(profile)
         await self.session.flush()
 
+    async def update_profile_fields(self, profile: PlayerProfile, **fields) -> PlayerProfile:
+        for field, value in fields.items():
+            setattr(profile, field, value)
+        await self.session.flush()
+        return profile
+
     async def search_by_game(self, owner_id: int, game: GameCode) -> list[tuple[PlayerProfile, User]]:
         stmt = (
             select(PlayerProfile, User)
@@ -94,3 +100,13 @@ class ProfileRepository:
         )
         result = await self.session.execute(stmt)
         return list(result.all())
+
+    async def mlbb_id_exists(self, game_player_id: str, *, exclude_owner_id: int | None = None) -> bool:
+        conditions = [
+            PlayerProfile.game == GameCode.MLBB,
+            PlayerProfile.game_player_id == game_player_id,
+        ]
+        if exclude_owner_id is not None:
+            conditions.append(PlayerProfile.owner_id != exclude_owner_id)
+        stmt = select(PlayerProfile.id).where(and_(*conditions)).limit(1)
+        return (await self.session.scalar(stmt)) is not None
