@@ -35,3 +35,7 @@ class ProfilesSectionStates(StatesGroup):
 
 class SearchStates(StatesGroup):
     waiting_for_message_text = State()
+
+
+class OnboardingStates(StatesGroup):
+    waiting_for_nickname = State()

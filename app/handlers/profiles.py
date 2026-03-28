@@ -8,7 +8,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import (
-    BTN_MY_PROFILES,
+    BTN_MY_PROFILES_TEXTS,
     CB_MY_PROFILES_BACK,
     CB_MY_PROFILES_CARD_BACK,
     CB_MY_PROFILES_CREATE_CANCEL,
@@ -96,7 +96,7 @@ def _safe(value: str | None) -> str:
 
 
 def _dashboard_text(profiles_by_game: dict[GameCode, object]) -> str:
-    lines = ['<b>🗂 Ваши игровые профили</b>', '']
+    lines = ['<b>🎮 Ваши игровые анкеты</b>', '']
     for game in SUPPORTED_GAMES:
         if game in profiles_by_game:
             lines.append(f'✅ {_game_title(game)}: Создана')
@@ -121,7 +121,7 @@ def _profile_card_text(profile) -> str:
         extra_roles = ', '.join(extra_values) if extra_values else 'Не указано'
 
         return (
-            f"<b>🎮 Профиль: {_game_title(profile.game)}</b>\n\n"
+            f"<b>🎮 Анкета: {_game_title(profile.game)}</b>\n\n"
             f"<b>🆔 ID:</b> {_safe(profile.game_player_id)}\n"
             f"<b>🌍 Регион:</b> {_safe(profile.play_time)}\n\n"
             f"<b>🎖 Ранг:</b> {_safe(profile.rank)}\n"
@@ -131,7 +131,7 @@ def _profile_card_text(profile) -> str:
         )
 
     return (
-        f"<b>Профиль: {_game_title(profile.game)}</b>\n\n"
+        f"<b>Анкета: {_game_title(profile.game)}</b>\n\n"
         f"<b>🎮 Игра:</b> {_game_title(profile.game)}\n"
         f"<b>🆔 ID:</b> {_safe(profile.game_player_id)}\n"
         f"<b>🎖 Ранг:</b> {_safe(profile.rank)}\n"
@@ -142,7 +142,7 @@ def _profile_card_text(profile) -> str:
 
 
 def _mlbb_progress_caption(data: dict) -> str:
-    lines = ['<b>🎮 Создание профиля Mobile Legends</b>', '']
+    lines = ['<b>🎮 Создание анкеты Mobile Legends</b>', '']
     top_block: list[str] = []
     middle_block: list[str] = []
     bottom_block: list[str] = []
@@ -252,6 +252,15 @@ def _photo_media(photo_file_id: str | None, photo_path: Path | None = None):
     if photo_path is not None and photo_path.exists():
         return FSInputFile(photo_path)
     return FSInputFile(DEFAULT_AVATAR_PATH)
+
+
+def _message_image_file_id(message: Message) -> str | None:
+    if message.photo:
+        return message.photo[-1].file_id
+    document = message.document
+    if document is not None and (document.mime_type or '').startswith('image/'):
+        return document.file_id
+    return None
 
 
 async def _edit_screen(
@@ -389,11 +398,11 @@ async def _finalize_profile_edit_success(
     await _delete_temp_notices(state, source_message)
     await state.set_state(None)
     await state.update_data(edit_field=None, edit_extra_lanes=[])
-    await source_message.answer('✅ Данные профиля сохранены.', reply_markup=my_profiles_hide_notice_keyboard())
+    await source_message.answer('✅ Данные анкеты сохранены.', reply_markup=my_profiles_hide_notice_keyboard())
     await _render_active_profile_by_ref(state, source_message, user_id, session)
 
 
-@router.message(F.text == BTN_MY_PROFILES)
+@router.message(F.text.in_(BTN_MY_PROFILES_TEXTS))
 async def my_profiles_open_handler(
     message: Message,
     state: FSMContext,
@@ -486,13 +495,13 @@ async def my_profiles_create_menu_handler(callback: CallbackQuery, state: FSMCon
     missing_games = [game for game in SUPPORTED_GAMES if game not in profiles_by_game]
 
     if not missing_games:
-        await callback.answer('Скоро добавим новые игры для профилей', show_alert=True)
+        await callback.answer('Скоро добавим новые игры для анкет', show_alert=True)
         return
 
     await callback.answer()
     await _edit_screen(
         callback.message,
-        caption='<b>🎮 Выберите игру для создания профиля</b>',
+        caption='<b>🎮 Выберите игру для создания анкеты</b>',
         reply_markup=my_profiles_create_game_keyboard(games=missing_games),
         photo_file_id=MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
@@ -521,13 +530,13 @@ async def my_profiles_create_pick_handler(callback: CallbackQuery, state: FSMCon
     await callback.answer()
     await _edit_screen(
         callback.message,
-        caption="<b>🎮 Создание профиля Mobile Legends</b>",
+        caption="<b>🎮 Создание анкеты Mobile Legends</b>",
         reply_markup=None,
         photo_file_id=MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await _remember_message(state, callback.message)
     prompt = await callback.message.answer(
-        "📸 <b>Отправьте скриншот вашего профиля из игры.</b>\n\n"
+        "📸 <b>Отправьте скриншот вашей анкеты из игры.</b>\n\n"
         "Это поможет другим игрокам быстрее вас узнать.",
         reply_markup=my_profiles_create_cancel_keyboard(),
     )
@@ -570,17 +579,20 @@ async def my_profiles_create_cancel_handler(callback: CallbackQuery, state: FSMC
     await _render_dashboard_by_ref(state, callback.message, user_id, session)
 
 
-@router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_photo), F.photo)
+@router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_photo), F.photo | F.document)
 async def mlbb_create_photo_handler(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
-    if message.from_user is None or not message.photo:
+    if message.from_user is None:
         return
 
     await ensure_user_and_locale(message.from_user, session)
-    photo_file_id = message.photo[-1].file_id
+    photo_file_id = _message_image_file_id(message)
+    if photo_file_id is None:
+        await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_create_cancel_keyboard())
+        return
     await state.update_data(mlbb_photo_file_id=photo_file_id)
     data = await state.get_data()
     await _edit_screen_by_ref(
@@ -629,7 +641,7 @@ async def mlbb_create_game_id_handler(message: Message, state: FSMContext, sessi
 
     if await ProfileService(session).mlbb_id_exists(game_id_raw, exclude_owner_id=user_id):
         await message.answer(
-            '⚠️ Такой MLBB ID уже используется в другом профиле.\n\n'
+            '⚠️ Такой MLBB ID уже используется в другой анкете.\n\n'
             'Пожалуйста, введите другой ID.',
             reply_markup=my_profiles_create_cancel_keyboard(),
         )
@@ -825,7 +837,7 @@ async def mlbb_create_extra_done_handler(
     await callback.answer()
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
-        '📝 <b>Добавьте описание в профиль:</b>\n\n'
+        '📝 <b>Добавьте описание в анкету:</b>\n\n'
         'Расскажите кратко о стиле игры, роли и когда обычно играете.',
         reply_markup=my_profiles_create_cancel_keyboard(),
     )
@@ -914,12 +926,12 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         or not isinstance(server, str)
         or not isinstance(main_lane_raw, str)
     ):
-        await message.answer('Не удалось завершить профиль.', reply_markup=my_profiles_create_cancel_keyboard())
+        await message.answer('Не удалось завершить анкету.', reply_markup=my_profiles_create_cancel_keyboard())
         return
 
     main_lane = _parse_lane(main_lane_raw)
     if main_lane is None:
-        await message.answer('Не удалось завершить профиль.', reply_markup=my_profiles_create_cancel_keyboard())
+        await message.answer('Не удалось завершить анкету.', reply_markup=my_profiles_create_cancel_keyboard())
         return
 
     extra_lanes: list[MlbbLaneCode] = []
@@ -957,7 +969,7 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         reply_markup=my_profile_details_keyboard(),
         photo_file_id=profile.profile_image_file_id,
     )
-    await message.answer('✅ Профиль успешно создан!', reply_markup=my_profiles_hide_notice_keyboard())
+    await message.answer('✅ Анкета успешно создана!', reply_markup=my_profiles_hide_notice_keyboard())
     await state.set_state(None)
     await state.update_data(create_mode=None)
 
@@ -995,7 +1007,7 @@ async def my_profiles_refill_handler(callback: CallbackQuery, state: FSMContext,
     user_id, _ = await ensure_user_and_locale(callback.from_user, session)
     profile = await ProfileService(session).get_profile_for_game(user_id, GameCode.MLBB)
     if profile is None:
-        await callback.answer('Профиль не найден', show_alert=True)
+        await callback.answer('Анкета не найдена', show_alert=True)
         return
 
     await state.set_state(ProfilesSectionStates.mlbb_waiting_photo)
@@ -1020,7 +1032,7 @@ async def my_profiles_refill_handler(callback: CallbackQuery, state: FSMContext,
     await _remember_message(state, callback.message)
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
-        "📸 <b>Отправьте скриншот вашего профиля из игры.</b>\n\n"
+        "📸 <b>Отправьте скриншот вашей анкеты из игры.</b>\n\n"
         "Это поможет другим игрокам быстрее вас узнать.",
         reply_markup=my_profiles_create_cancel_keyboard(),
     )
@@ -1042,7 +1054,7 @@ async def my_profiles_edit_field_handler(
     field = (callback.data or '').replace(CB_MY_PROFILES_EDIT_FIELD_PREFIX, '', 1)
     profile = await ProfileService(session).get_profile_for_game(user_id, GameCode.MLBB)
     if profile is None:
-        await callback.answer('Профиль не найден', show_alert=True)
+        await callback.answer('Анкета не найдена', show_alert=True)
         return
 
     await callback.answer()
@@ -1052,7 +1064,7 @@ async def my_profiles_edit_field_handler(
         await state.set_state(ProfilesSectionStates.edit_waiting_photo)
         await state.update_data(edit_field=field)
         prompt = await callback.message.answer(
-            '🖼 <b>Отправьте новую картинку профиля.</b>',
+            '🖼 <b>Отправьте новую картинку анкеты.</b>',
             reply_markup=my_profiles_edit_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
@@ -1129,7 +1141,7 @@ async def my_profiles_edit_field_handler(
         await state.set_state(ProfilesSectionStates.edit_waiting_about)
         await state.update_data(edit_field=field)
         prompt = await callback.message.answer(
-            '📝 <b>Введите новое описание профиля:</b>',
+            '📝 <b>Введите новое описание анкеты:</b>',
             reply_markup=my_profiles_edit_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
@@ -1165,16 +1177,20 @@ async def my_profiles_edit_cancel_handler(callback: CallbackQuery, state: FSMCon
     await _render_active_profile_by_ref(state, callback.message, user_id, session)
 
 
-@router.message(StateFilter(ProfilesSectionStates.edit_waiting_photo), F.photo)
+@router.message(StateFilter(ProfilesSectionStates.edit_waiting_photo), F.photo | F.document)
 async def my_profiles_edit_photo_handler(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    if message.from_user is None or not message.photo:
+    if message.from_user is None:
         return
 
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
-    photo_file_id = message.photo[-1].file_id
+    photo_file_id = _message_image_file_id(message)
+    if photo_file_id is None:
+        notice = await message.answer('Пожалуйста, отправьте изображение.')
+        await _remember_temp_notice(state, notice)
+        return
     profile = await ProfileService(session).update_mlbb_profile_fields(owner_id=user_id, profile_image_file_id=photo_file_id)
     if profile is None:
-        await message.answer('Профиль не найден.')
+        await message.answer('Анкета не найдена.')
         return
 
     await _delete_prompt_by_ref(state, message)
@@ -1209,7 +1225,7 @@ async def my_profiles_edit_id_handler(message: Message, state: FSMContext, sessi
 
     profile = await ProfileService(session).update_mlbb_profile_fields(owner_id=user_id, game_player_id=game_id_raw)
     if profile is None:
-        await message.answer('Профиль не найден.')
+        await message.answer('Анкета не найдена.')
         return
 
     await _delete_prompt_by_ref(state, message)
@@ -1236,7 +1252,7 @@ async def my_profiles_edit_rank_handler(callback: CallbackQuery, state: FSMConte
 
     profile = await ProfileService(session).update_mlbb_profile_fields(owner_id=user_id, rank=rank)
     if profile is None:
-        await callback.answer('Профиль не найден', show_alert=True)
+        await callback.answer('Анкета не найдена', show_alert=True)
         return
 
     await callback.answer()
@@ -1271,7 +1287,7 @@ async def my_profiles_edit_main_lane_handler(callback: CallbackQuery, state: FSM
         role=_lane_title(lane),
     )
     if profile is None:
-        await callback.answer('Профиль не найден', show_alert=True)
+        await callback.answer('Анкета не найдена', show_alert=True)
         return
 
     await callback.answer()
@@ -1353,7 +1369,7 @@ async def my_profiles_edit_extra_done_handler(callback: CallbackQuery, state: FS
         extra_lanes=[lane.value for lane in extra_lanes],
     )
     if profile is None:
-        await callback.answer('Профиль не найден', show_alert=True)
+        await callback.answer('Анкета не найдена', show_alert=True)
         return
 
     await callback.answer()
@@ -1377,7 +1393,7 @@ async def my_profiles_edit_server_handler(callback: CallbackQuery, state: FSMCon
 
     profile = await ProfileService(session).update_mlbb_profile_fields(owner_id=user_id, play_time=server)
     if profile is None:
-        await callback.answer('Профиль не найден', show_alert=True)
+        await callback.answer('Анкета не найдена', show_alert=True)
         return
 
     await callback.answer()
@@ -1409,7 +1425,7 @@ async def my_profiles_edit_about_handler(message: Message, state: FSMContext, se
 
     profile = await ProfileService(session).update_mlbb_profile_fields(owner_id=user_id, description=about, about=about)
     if profile is None:
-        await message.answer('Профиль не найден.')
+        await message.answer('Анкета не найдена.')
         return
 
     await _delete_prompt_by_ref(state, message)
@@ -1433,7 +1449,10 @@ async def my_profiles_delete_ask_handler(callback: CallbackQuery, state: FSMCont
     await callback.answer()
     await _edit_screen(
         callback.message,
-        caption=f'Вы уверены, что хотите удалить профиль {game_title}?',
+        caption=(
+            '⚠️ <b>Удаление анкеты</b>\n\n'
+            f'Вы уверены, что хотите удалить анкету <b>{game_title}</b>?'
+        ),
         reply_markup=my_profiles_delete_confirm_keyboard(),
         photo_path=DELETE_PROFILE_PHOTO_PATH,
     )
@@ -1478,5 +1497,5 @@ async def my_profiles_delete_confirm_handler(callback: CallbackQuery, state: FSM
         except ValueError:
             deleted = False
 
-    await callback.answer('Профиль удален' if deleted else 'Профиль не найден', show_alert=not deleted)
+    await callback.answer('Анкета удалена' if deleted else 'Анкета не найдена', show_alert=not deleted)
     await _render_dashboard(message=callback.message, state=state, user_id=user_id, session=session, use_edit=True)

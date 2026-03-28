@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import LanguageCode
@@ -19,12 +19,11 @@ class UserRepository:
 
     async def create_or_update(self, *, user_id: int, username: str | None, first_name: str | None, last_name: str | None) -> User:
         user = await self.get_by_id(user_id)
-        composed_full_name = self._compose_full_name(first_name, last_name)
         if user is None:
             user = User(
                 id=user_id,
                 username=username,
-                full_name=composed_full_name,
+                full_name=None,
                 first_name=first_name,
                 last_name=last_name,
             )
@@ -36,8 +35,6 @@ class UserRepository:
         user.username = username
         user.first_name = first_name
         user.last_name = last_name
-        if not user.full_name:
-            user.full_name = composed_full_name
         await self.session.flush()
         return user
 
@@ -69,6 +66,14 @@ class UserRepository:
         user.full_name = full_name
         await self.session.flush()
         return user
+
+    async def nickname_exists(self, nickname: str, *, exclude_user_id: int | None = None) -> bool:
+        nickname_normalized = nickname.strip().lower()
+        stmt = select(User.id).where(func.lower(User.full_name) == nickname_normalized)
+        if exclude_user_id is not None:
+            stmt = stmt.where(User.id != exclude_user_id)
+        stmt = stmt.limit(1)
+        return (await self.session.scalar(stmt)) is not None
 
     async def toggle_notification(self, user_id: int, field: str) -> bool | None:
         user = await self.get_by_id(user_id)

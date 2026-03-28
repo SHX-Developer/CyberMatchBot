@@ -39,6 +39,10 @@ from app.constants import (
     CB_PROFILE_STATS_REFRESH,
     CB_SEARCH_BACK_MAIN,
     CB_SEARCH_CANCEL_MESSAGE,
+    CB_ACTIVITY_BACK,
+    CB_ACTIVITY_OPEN,
+    CB_ACTIVITY_REFRESH_PREFIX,
+    CB_ACTIVITY_SECTION_PREFIX,
     CB_SEARCH_CREATE_PROFILE,
     CB_SEARCH_GAME_PICK_PREFIX,
     CB_SEARCH_HIDE_NOTICE,
@@ -49,6 +53,10 @@ from app.constants import (
     CB_SEARCH_SUB_PREFIX,
     CB_SEARCH_VIEW_LIKER_PREFIX,
     CB_SEARCH_VIEW_PROFILE_PREFIX,
+    CB_SEARCH_USER_PROFILES_PREFIX,
+    CB_SEARCH_USER_PROFILE_GAME_PREFIX,
+    CB_SEARCH_BACK_TO_CARD,
+    CB_SEARCH_BACK_TO_PROFILE_PREFIX,
 )
 from app.database import GameCode, MlbbLaneCode
 from app.locales import LocalizationManager
@@ -210,8 +218,8 @@ def open_my_profiles_keyboard(i18n: LocalizationManager, locale: str) -> InlineK
 def profile_actions_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=i18n.t(locale, 'action.edit_data'), callback_data=CB_PROFILE_EDIT)
-    builder.button(text='🔔 Уведомления', callback_data=CB_PROFILE_NOTIFICATIONS)
-    builder.button(text=i18n.t(locale, 'action.change_language'), callback_data=CB_PROFILE_LANGUAGE)
+    builder.button(text=i18n.t(locale, 'action.notifications'), callback_data=CB_PROFILE_NOTIFICATIONS)
+    builder.button(text=i18n.t(locale, 'action.language.short'), callback_data=CB_PROFILE_LANGUAGE)
     builder.button(text=i18n.t(locale, 'action.statistics'), callback_data=CB_PROFILE_STATS)
     builder.adjust(1, 2, 1)
     return builder.as_markup()
@@ -219,7 +227,7 @@ def profile_actions_keyboard(i18n: LocalizationManager, locale: str) -> InlineKe
 
 def profile_stats_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='🔄 Обновить', callback_data=CB_PROFILE_STATS_REFRESH)
+    builder.button(text=i18n.t(locale, 'action.refresh'), callback_data=CB_PROFILE_STATS_REFRESH)
     builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
     builder.adjust(1)
     return builder.as_markup()
@@ -228,7 +236,7 @@ def profile_stats_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyb
 def profile_edit_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=i18n.t(locale, 'action.edit_avatar'), callback_data=CB_PROFILE_EDIT_AVATAR)
-    builder.button(text='✏️ Изменить никнейм', callback_data=CB_PROFILE_EDIT_FULL_NAME)
+    builder.button(text=i18n.t(locale, 'action.edit_nickname'), callback_data=CB_PROFILE_EDIT_FULL_NAME)
     builder.button(text=i18n.t(locale, 'action.edit_username'), callback_data=CB_PROFILE_EDIT_USERNAME)
     builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
     builder.adjust(1)
@@ -237,12 +245,12 @@ def profile_edit_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeybo
 
 def profile_notifications_keyboard(i18n: LocalizationManager, locale: str, settings: dict[str, bool]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    likes_state = 'включены' if settings.get('likes', True) else 'выключены'
-    subs_state = 'включены' if settings.get('subscriptions', True) else 'выключены'
-    msg_state = 'включены' if settings.get('messages', True) else 'выключены'
-    builder.button(text=f'❤️ Лайки ({likes_state})', callback_data=CB_PROFILE_NOTIF_LIKES)
-    builder.button(text=f'⭐ Подписки ({subs_state})', callback_data=CB_PROFILE_NOTIF_SUBS)
-    builder.button(text=f'💬 Сообщения ({msg_state})', callback_data=CB_PROFILE_NOTIF_MESSAGES)
+    likes_state = i18n.t(locale, 'state.on') if settings.get('likes', True) else i18n.t(locale, 'state.off')
+    subs_state = i18n.t(locale, 'state.on') if settings.get('subscriptions', True) else i18n.t(locale, 'state.off')
+    msg_state = i18n.t(locale, 'state.on') if settings.get('messages', True) else i18n.t(locale, 'state.off')
+    builder.button(text=f"{i18n.t(locale, 'label.likes')} ({likes_state})", callback_data=CB_PROFILE_NOTIF_LIKES)
+    builder.button(text=f"{i18n.t(locale, 'label.subscriptions')} ({subs_state})", callback_data=CB_PROFILE_NOTIF_SUBS)
+    builder.button(text=f"{i18n.t(locale, 'label.messages')} ({msg_state})", callback_data=CB_PROFILE_NOTIF_MESSAGES)
     builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
     builder.adjust(1)
     return builder.as_markup()
@@ -273,16 +281,16 @@ def my_profiles_dashboard_keyboard(*, created_games: list[GameCode]) -> InlineKe
     for game in created_games:
         title = 'Mobile Legends' if game == GameCode.MLBB else 'Неизвестная игра'
         builder.button(text=title, callback_data=f'{CB_MY_PROFILES_GAME_PREFIX}{game.value}')
-    builder.button(text='+ Добавить новый профиль', callback_data=CB_MY_PROFILES_CREATE_MENU)
+    builder.button(text='➕ Добавить новую анкету', callback_data=CB_MY_PROFILES_CREATE_MENU)
     builder.adjust(1)
     return builder.as_markup()
 
 
 def my_profile_details_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='✏️ Изменить данные', callback_data=CB_MY_PROFILES_EDIT)
+    builder.button(text='✏️ Изменить анкету', callback_data=CB_MY_PROFILES_EDIT)
     builder.button(text='🔄 Заполнить заново', callback_data=CB_MY_PROFILES_REFILL)
-    builder.button(text='🗑 Удалить профиль', callback_data=CB_MY_PROFILES_DELETE_ASK)
+    builder.button(text='🗑 Удалить анкету', callback_data=CB_MY_PROFILES_DELETE_ASK)
     builder.button(text='⬅️ Назад', callback_data=CB_MY_PROFILES_BACK)
     builder.adjust(1)
     return builder.as_markup()
@@ -308,14 +316,14 @@ def my_profiles_delete_confirm_keyboard() -> InlineKeyboardMarkup:
 
 def my_profiles_edit_fields_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='🖼 Фото профиля', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}photo')
+    builder.button(text='🖼 Фото анкеты', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}photo')
     builder.button(text='🆔 ID', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}id')
     builder.button(text='🌍 Регион', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}server')
     builder.button(text='🎖 Ранг', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}rank')
     builder.button(text='🛡 Роль', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}role')
     builder.button(text='🎯 Доп. линии', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}extra_lanes')
     builder.button(text='📝 О себе', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}about')
-    builder.button(text='⬅️ Назад к профилю', callback_data=CB_MY_PROFILES_CARD_BACK)
+    builder.button(text='⬅️ Назад к анкете', callback_data=CB_MY_PROFILES_CARD_BACK)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -336,7 +344,7 @@ def my_profiles_edit_cancel_keyboard() -> InlineKeyboardMarkup:
 
 def my_profiles_hide_notice_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='🗑 Скрыть сообщение', callback_data=CB_MY_PROFILES_HIDE_NOTICE)
+    builder.button(text='🔺 Скрыть сообщение', callback_data=CB_MY_PROFILES_HIDE_NOTICE)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -417,92 +425,153 @@ def my_profiles_mlbb_server_keyboard(*, cancel_callback: str = CB_MY_PROFILES_CR
     return builder.as_markup()
 
 
-def search_need_profile_keyboard() -> InlineKeyboardMarkup:
+def search_need_profile_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='➕ Создать профиль', callback_data=CB_SEARCH_CREATE_PROFILE)
+    builder.button(text=i18n.t(locale, 'search.button.create_profile'), callback_data=CB_SEARCH_CREATE_PROFILE)
     builder.adjust(1)
     return builder.as_markup()
 
 
-def search_game_pick_keyboard() -> InlineKeyboardMarkup:
+def search_game_pick_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='🎮 Mobile Legends', callback_data=f'{CB_SEARCH_GAME_PICK_PREFIX}{GameCode.MLBB.value}')
+    builder.button(text=i18n.t(locale, 'search.button.game.mlbb'), callback_data=f'{CB_SEARCH_GAME_PICK_PREFIX}{GameCode.MLBB.value}')
     builder.adjust(1)
     return builder.as_markup()
 
 
 def search_profile_actions_keyboard(
     *,
+    i18n: LocalizationManager,
+    locale: str,
     target_user_id: int,
     game: GameCode,
     subscribed: bool,
+    liked: bool = False,
     include_next: bool = True,
     include_hide: bool = False,
+    back_to_profile_user_id: int | None = None,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='👤 Посмотреть профиль', callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{target_user_id}')
-    builder.button(text='❤️ Лайк', callback_data=f'{CB_SEARCH_LIKE_PREFIX}{target_user_id}:{game.value}')
-    builder.button(text='💬 Сообщение', callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{target_user_id}')
-    if include_next:
-        builder.button(text='➡️ Следующий профиль', callback_data=f'{CB_SEARCH_NEXT_PREFIX}{game.value}')
+    builder.button(text=i18n.t(locale, 'search.button.personal_profile'), callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{target_user_id}')
+    like_text = i18n.t(locale, 'search.button.like_sent') if liked else i18n.t(locale, 'search.button.like')
+    builder.button(text=like_text, callback_data=f'{CB_SEARCH_LIKE_PREFIX}{target_user_id}:{game.value}')
+    builder.button(text=i18n.t(locale, 'search.button.message'), callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{target_user_id}')
+    if back_to_profile_user_id is not None:
+        builder.button(text=i18n.t(locale, 'search.button.back_to_personal_profile'), callback_data=f'{CB_SEARCH_BACK_TO_PROFILE_PREFIX}{back_to_profile_user_id}')
     if include_hide:
-        builder.button(text='🗑 Скрыть', callback_data=CB_SEARCH_HIDE_NOTICE)
-    builder.adjust(1, 2, 1, 1)
+        builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
+    if include_next:
+        builder.button(text=i18n.t(locale, 'search.button.next_profile'), callback_data=f'{CB_SEARCH_NEXT_PREFIX}{game.value}')
+
+    row_pattern = [1, 2]
+    if back_to_profile_user_id is not None:
+        row_pattern.append(1)
+    if include_hide:
+        row_pattern.append(1)
+    if include_next:
+        row_pattern.append(1)
+    builder.adjust(*row_pattern)
     return builder.as_markup()
 
 
-def search_empty_keyboard(*, game: GameCode) -> InlineKeyboardMarkup:
+def search_empty_keyboard(*, i18n: LocalizationManager, locale: str, game: GameCode) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='🔄 Искать заново', callback_data=f'{CB_SEARCH_RETRY_PREFIX}{game.value}')
+    builder.button(text=i18n.t(locale, 'search.button.retry'), callback_data=f'{CB_SEARCH_RETRY_PREFIX}{game.value}')
     builder.adjust(1)
     return builder.as_markup()
 
 
-def search_like_notice_keyboard(*, liker_user_id: int, game: GameCode) -> InlineKeyboardMarkup:
+def search_like_notice_keyboard(*, i18n: LocalizationManager, locale: str, liker_user_id: int, game: GameCode) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='👀 Посмотреть профиль', callback_data=f'{CB_SEARCH_VIEW_LIKER_PREFIX}{liker_user_id}:{game.value}')
-    builder.button(text='🗑 Скрыть', callback_data=CB_SEARCH_HIDE_NOTICE)
+    builder.button(text=i18n.t(locale, 'search.button.personal_profile'), callback_data=f'{CB_SEARCH_VIEW_LIKER_PREFIX}{liker_user_id}:{game.value}')
+    builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
     builder.adjust(1)
     return builder.as_markup()
 
 
-def search_profile_notice_keyboard(*, user_id: int, subscribed: bool, game: GameCode = GameCode.MLBB) -> InlineKeyboardMarkup:
+def search_profile_notice_keyboard(
+    *,
+    i18n: LocalizationManager,
+    locale: str,
+    user_id: int,
+    subscribed: bool,
+    game: GameCode = GameCode.MLBB,
+    include_back_to_card: bool = True,
+    include_hide_notice: bool = False,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='🗂 Анкеты пользователя', callback_data=f'{CB_SEARCH_VIEW_LIKER_PREFIX}{user_id}:{game.value}')
-    builder.button(text='💬 Написать', callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{user_id}')
-    sub_text = '🔕 Отписаться' if subscribed else '⭐ Подписаться'
+    builder.button(text=i18n.t(locale, 'search.button.game_profiles'), callback_data=f'{CB_SEARCH_USER_PROFILES_PREFIX}{user_id}')
+    builder.button(text=i18n.t(locale, 'search.button.write'), callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{user_id}')
+    sub_text = i18n.t(locale, 'search.button.unsubscribe') if subscribed else i18n.t(locale, 'search.button.subscribe')
     builder.button(text=sub_text, callback_data=f'{CB_SEARCH_SUB_PREFIX}{user_id}')
-    builder.button(text='🗑 Скрыть', callback_data=CB_SEARCH_HIDE_NOTICE)
-    builder.adjust(1, 2, 1)
+    if include_back_to_card:
+        builder.button(text=i18n.t(locale, 'search.button.back_to_game_profile'), callback_data=CB_SEARCH_BACK_TO_CARD)
+    if include_hide_notice:
+        builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
+    row_pattern = [1, 2]
+    if include_back_to_card:
+        row_pattern.append(1)
+    if include_hide_notice:
+        row_pattern.append(1)
+    builder.adjust(*row_pattern)
     return builder.as_markup()
 
 
-def search_message_notice_keyboard(*, user_id: int, game: GameCode) -> InlineKeyboardMarkup:
+def search_user_profiles_games_keyboard(*, i18n: LocalizationManager, locale: str, user_id: int, games: list[GameCode]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='↩️ Ответить', callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{user_id}')
-    builder.button(text='👤 Профиль', callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{user_id}')
-    builder.button(text='🗑 Скрыть', callback_data=CB_SEARCH_HIDE_NOTICE)
-    builder.adjust(1, 1, 1)
-    return builder.as_markup()
-
-
-def search_subscription_notice_keyboard(*, user_id: int) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.button(text='👤 Посмотреть профиль', callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{user_id}')
-    builder.button(text='🗑 Скрыть', callback_data=CB_SEARCH_HIDE_NOTICE)
+    for game in games:
+        title = i18n.t(locale, 'search.button.game.mlbb') if game == GameCode.MLBB else f'🎮 {game.value}'
+        builder.button(text=title, callback_data=f'{CB_SEARCH_USER_PROFILE_GAME_PREFIX}{user_id}:{game.value}')
+    builder.button(text=i18n.t(locale, 'search.button.back_to_personal_profile'), callback_data=f'{CB_SEARCH_BACK_TO_PROFILE_PREFIX}{user_id}')
     builder.adjust(1)
     return builder.as_markup()
 
 
-def search_hide_keyboard() -> InlineKeyboardMarkup:
+def activity_open_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='🗑 Скрыть', callback_data=CB_SEARCH_HIDE_NOTICE)
+    builder.button(text=i18n.t(locale, 'activity.button.my_subscriptions'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscriptions')
+    builder.button(text=i18n.t(locale, 'activity.button.my_subscribers'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscribers')
+    builder.button(text=i18n.t(locale, 'activity.button.my_likes'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}likes')
+    builder.button(text=i18n.t(locale, 'activity.button.who_liked_me'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}liked_by')
+    builder.button(text=i18n.t(locale, 'activity.button.friends'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}friends')
     builder.adjust(1)
     return builder.as_markup()
 
 
-def search_message_cancel_keyboard() -> InlineKeyboardMarkup:
+def activity_section_keyboard(i18n: LocalizationManager, locale: str, section: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='❌ Отменить', callback_data=CB_SEARCH_CANCEL_MESSAGE)
+    builder.button(text=i18n.t(locale, 'activity.button.refresh'), callback_data=f'{CB_ACTIVITY_REFRESH_PREFIX}{section}')
+    builder.button(text=i18n.t(locale, 'activity.button.back_to_activity'), callback_data=CB_ACTIVITY_BACK)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def search_message_notice_keyboard(*, i18n: LocalizationManager, locale: str, user_id: int, game: GameCode) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'search.button.reply'), callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{user_id}')
+    builder.button(text=i18n.t(locale, 'search.button.profile_short'), callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{user_id}:msg')
+    builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def search_subscription_notice_keyboard(*, i18n: LocalizationManager, locale: str, user_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'search.button.view_profile'), callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{user_id}')
+    builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def search_hide_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def search_message_cancel_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'action.cancel'), callback_data=CB_SEARCH_CANCEL_MESSAGE)
     builder.adjust(1)
     return builder.as_markup()

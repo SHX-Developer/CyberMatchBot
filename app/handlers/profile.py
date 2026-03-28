@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import (
-    BTN_PROFILE,
+    BTN_PROFILE_TEXTS,
     PROFILE_IMAGE_FILE_ID,
     PROFILE_EDIT_IMAGE_FILE_ID,
     PROFILE_LANGUAGE_IMAGE_FILE_ID,
@@ -81,6 +81,13 @@ def _full_name_value(raw_full_name: str | None, locale: str, i18n: LocalizationM
 
 
 def _stats_values(payload: dict[str, object]) -> tuple[int, int, int, int]:
+    likes_raw = payload.get('likes_count')
+    followers_raw = payload.get('followers_count')
+    subscriptions_raw = payload.get('subscriptions_count')
+    friends_raw = payload.get('friends_count')
+    if all(isinstance(value, int) for value in (likes_raw, followers_raw, subscriptions_raw, friends_raw)):
+        return int(likes_raw), int(followers_raw), int(subscriptions_raw), int(friends_raw)
+
     stats = payload.get('stats')
     if stats is None:
         return 0, 0, 0, 0
@@ -117,15 +124,18 @@ def _profile_caption(*, i18n: LocalizationManager, locale: str, payload: dict[st
         return None
 
     likes, followers, subscriptions, friends = _stats_values(payload)
-    return (
-        "<b>👤 Профиль</b>\n\n"
-        f"<b>🔗 Username:</b> {_username_value(user.username, locale, i18n)}\n"
-        f"<b>🎭 Никнейм:</b> {_full_name_value(user.full_name, locale, i18n)}\n\n"
-        f"<b>❤️ Лайки:</b> {likes}\n"
-        f"<b>👥 Подписчики:</b> {followers}\n"
-        f"<b>⭐ Подписки:</b> {subscriptions}\n"
-        f"<b>🤝 Друзья:</b> {friends}\n\n"
-        f"<b>📅 Дата регистрации:</b> {format_datetime(user.registered_at, locale).split(' ')[0]}"
+    return i18n.t(
+        locale,
+        'profile.section.card',
+        user_id=user.id,
+        username=_username_value(user.username, locale, i18n),
+        full_name=_full_name_value(user.full_name, locale, i18n),
+        profiles_count=int(payload.get('profiles_count', 0) or 0),
+        likes=likes,
+        followers=followers,
+        subscriptions=subscriptions,
+        friends=friends,
+        registered_at=format_datetime(user.registered_at, locale).split(' ')[0],
     )
 
 
@@ -135,25 +145,37 @@ def _stats_caption(*, i18n: LocalizationManager, locale: str, payload: dict[str,
         return None
 
     likes, followers, subscriptions, friends = _stats_values(payload)
-    return (
-        f"<b>📊 Статистика профиля {_username_value(user.username, locale, i18n)}</b>\n\n"
-        f"<b>📋 Профили:</b> {int(payload.get('profiles_count', 0) or 0)}\n\n"
-        f"<b>❤️ Лайки:</b> {likes}\n\n"
-        f"<b>👥 Подписчики:</b> {followers}\n\n"
-        f"<b>⭐ Подписки:</b> {subscriptions}\n\n"
-        f"<b>🤝 Друзья:</b> {friends}"
+    title = i18n.t(locale, 'profile.stats.title.with_username', username=_username_value(user.username, locale, i18n))
+    return i18n.t(
+        locale,
+        'profile.section.stats.only',
+        title=title,
+        profiles_count=int(payload.get('profiles_count', 0) or 0),
+        likes=likes,
+        followers=followers,
+        subscriptions=subscriptions,
+        friends=friends,
     )
 
 
 async def _sync_avatar_from_telegram(*, user_id: int, message: Message, session: AsyncSession) -> None:
     try:
         photos = await message.bot.get_user_profile_photos(user_id=user_id, limit=1)
-    except TelegramBadRequest:
+    except Exception:
         return
-    avatar_file_id: str | None = None
-    if photos.photos:
-        avatar_file_id = photos.photos[0][-1].file_id
+    if not photos.photos:
+        return
+    avatar_file_id = photos.photos[0][-1].file_id
     await UserService(session).set_avatar_file_id(user_id, avatar_file_id)
+
+
+def _message_image_file_id(message: Message) -> str | None:
+    if message.photo:
+        return message.photo[-1].file_id
+    document = message.document
+    if document is not None and (document.mime_type or '').startswith('image/'):
+        return document.file_id
+    return None
 
 
 async def _remember_message(state: FSMContext, message: Message) -> None:
@@ -280,7 +302,7 @@ async def _render_profile(
     await _remember_message(state, sent)
 
 
-@router.message(F.text == BTN_PROFILE)
+@router.message(F.text.in_(BTN_PROFILE_TEXTS))
 async def profile_handler(
     message: Message,
     state: FSMContext,
@@ -504,7 +526,7 @@ async def profile_edit_cancel_handler(
         pass
 
 
-@router.message(StateFilter(ProfileStates.waiting_for_avatar), F.photo)
+@router.message(StateFilter(ProfileStates.waiting_for_avatar), F.photo | F.document)
 async def profile_avatar_save_handler(
     message: Message,
     state: FSMContext,
@@ -516,11 +538,12 @@ async def profile_avatar_save_handler(
         return
 
     user_id, locale = payload
-    if not message.photo:
+    file_id = _message_image_file_id(message)
+    if file_id is None:
         await message.answer(i18n.t(locale, 'profile.edit.avatar.invalid'))
         return
 
-    await UserService(session).set_avatar_file_id(user_id, message.photo[-1].file_id)
+    await UserService(session).set_avatar_file_id(user_id, file_id)
     await _delete_prompt_message(message, state)
     try:
         await message.delete()
