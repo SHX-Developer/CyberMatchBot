@@ -40,6 +40,8 @@
   "search.button.back_to_personal_profile": "⬅️ К личному профилю",
   "search.button.hide_message": "🔺 Скрыть сообщение",
   "search.button.next_profile": "➡️ Следующая анкета",
+  "search.button.previous_profile": "⬅️ Предыдущая анкета",
+  "search.button.show_profile_card": "🕹 Показать анкету",
   "search.button.retry": "🔄 Искать заново",
   "search.button.game_profiles": "🕹 Игровые анкеты",
   "search.button.write": "💬 Написать",

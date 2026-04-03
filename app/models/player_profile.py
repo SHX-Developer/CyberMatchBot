@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import BigInteger, Enum, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,5 +42,6 @@ class PlayerProfile(TimestampMixin, Base):
     )
     extra_lanes: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mythic_stars: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     owner = relationship('User', back_populates='profiles')

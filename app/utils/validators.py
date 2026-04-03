@@ -1,6 +1,6 @@
 import re
 
-MLBB_ID_PATTERN = re.compile(r'^\d+\(\d+\)$')
+MLBB_ID_PATTERN = re.compile(r'^\d{8,20}$')
 DESCRIPTION_MIN_LENGTH = 20
 DESCRIPTION_MAX_LENGTH = 500
 

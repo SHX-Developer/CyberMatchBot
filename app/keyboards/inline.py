@@ -49,6 +49,7 @@ from app.constants import (
     CB_SEARCH_LIKE_PREFIX,
     CB_SEARCH_MESSAGE_PREFIX,
     CB_SEARCH_NEXT_PREFIX,
+    CB_SEARCH_PREV_PREFIX,
     CB_SEARCH_RETRY_PREFIX,
     CB_SEARCH_SUB_PREFIX,
     CB_SEARCH_VIEW_LIKER_PREFIX,
@@ -448,6 +449,7 @@ def search_profile_actions_keyboard(
     subscribed: bool,
     liked: bool = False,
     include_next: bool = True,
+    include_previous: bool = False,
     include_hide: bool = False,
     back_to_profile_user_id: int | None = None,
 ) -> InlineKeyboardMarkup:
@@ -462,6 +464,8 @@ def search_profile_actions_keyboard(
         builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
     if include_next:
         builder.button(text=i18n.t(locale, 'search.button.next_profile'), callback_data=f'{CB_SEARCH_NEXT_PREFIX}{game.value}')
+    if include_previous:
+        builder.button(text=i18n.t(locale, 'search.button.previous_profile'), callback_data=f'{CB_SEARCH_PREV_PREFIX}{game.value}')
 
     row_pattern = [1, 2]
     if back_to_profile_user_id is not None:
@@ -469,6 +473,8 @@ def search_profile_actions_keyboard(
     if include_hide:
         row_pattern.append(1)
     if include_next:
+        row_pattern.append(1)
+    if include_previous:
         row_pattern.append(1)
     builder.adjust(*row_pattern)
     return builder.as_markup()
@@ -483,7 +489,7 @@ def search_empty_keyboard(*, i18n: LocalizationManager, locale: str, game: GameC
 
 def search_like_notice_keyboard(*, i18n: LocalizationManager, locale: str, liker_user_id: int, game: GameCode) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'search.button.personal_profile'), callback_data=f'{CB_SEARCH_VIEW_LIKER_PREFIX}{liker_user_id}:{game.value}')
+    builder.button(text=i18n.t(locale, 'search.button.show_profile_card'), callback_data=f'{CB_SEARCH_VIEW_LIKER_PREFIX}{liker_user_id}:{game.value}')
     builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
     builder.adjust(1)
     return builder.as_markup()

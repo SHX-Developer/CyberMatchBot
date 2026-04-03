@@ -44,6 +44,7 @@ class ProfileService:
         main_lane: MlbbLaneCode,
         extra_lanes: list[MlbbLaneCode],
         description: str,
+        mythic_stars: int | None = None,
     ) -> PlayerProfile:
         profile, _ = await self.create_profile_or_get_existing(owner_id, GameCode.MLBB)
         return await self.profile_repo.save_mlbb_data(
@@ -56,6 +57,7 @@ class ProfileService:
             main_lane=main_lane,
             extra_lanes=extra_lanes,
             description=description,
+            mythic_stars=mythic_stars,
         )
 
     async def delete_owned_profile(self, owner_id: int, profile_id: uuid.UUID) -> bool:

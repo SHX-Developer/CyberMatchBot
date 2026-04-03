@@ -21,6 +21,7 @@ from app.constants import (
     CB_SEARCH_LIKE_PREFIX,
     CB_SEARCH_MESSAGE_PREFIX,
     CB_SEARCH_NEXT_PREFIX,
+    CB_SEARCH_PREV_PREFIX,
     CB_SEARCH_RETRY_PREFIX,
     CB_SEARCH_SUB_PREFIX,
     CB_SEARCH_VIEW_LIKER_PREFIX,
@@ -80,6 +81,13 @@ def _extra_lanes_text(extra_lanes: list[str] | None) -> str:
     return ', '.join(_lane_title(item) for item in extra_lanes)
 
 
+def _format_rank(rank: str | None, mythic_stars: int | None) -> str:
+    value = rank or 'Не указано'
+    if rank == 'Мифический' and isinstance(mythic_stars, int) and mythic_stars > 0:
+        return f'{value} ({mythic_stars} ⭐)'
+    return value
+
+
 def _full_name(user) -> str:
     if user.full_name and user.full_name.strip():
         return user.full_name.strip()
@@ -98,7 +106,7 @@ def _search_card_text(profile, user) -> str:
         f"<b>🎮 Игровая анкета {escape(_full_name(user))}</b>\n\n"
         f"<b>🆔 ID:</b> <code>{escape(profile.game_player_id or 'Не указано')}</code>\n"
         f"<b>🌍 Сервер:</b> {escape(profile.play_time or 'Не указано')}\n\n"
-        f"<b>🎖 Ранг:</b> {escape(profile.rank or 'Не указано')}\n"
+        f"<b>🎖 Ранг:</b> {escape(_format_rank(profile.rank, profile.mythic_stars))}\n"
         f"<b>🛡 Основная линия:</b> {escape(_lane_title(profile.main_lane.value if profile.main_lane else None))}\n"
         f"<b>🎯 Доп. линии:</b> {escape(_extra_lanes_text(profile.extra_lanes))}\n\n"
         f"<b>📝 О себе:</b> {escape(profile.description or 'Не указано')}"
@@ -186,8 +194,27 @@ async def _show_next_profile(
 ) -> None:
     profile_service = ProfileService(session)
     interaction_service = InteractionService(session)
+    data = await state.get_data()
+    history_raw = data.get('search_history_profile_ids')
+    history: list[str] = [item for item in history_raw if isinstance(item, str)] if isinstance(history_raw, list) else []
+    if reset_cycle:
+        history = []
+    else:
+        current_profile_id = data.get('search_current_profile_id')
+        if isinstance(current_profile_id, str):
+            if not history or history[-1] != current_profile_id:
+                history.append(current_profile_id)
+
     found = await profile_service.search_profiles(user_id, game)
-    if not found:
+    filtered_found: list[tuple[object, object, bool, bool]] = []
+    for profile, owner in found:
+        subscribed = await interaction_service.is_subscribed(user_id, owner.id)
+        liked = await interaction_service.has_like(user_id, owner.id, game)
+        if subscribed and liked:
+            continue
+        filtered_found.append((profile, owner, subscribed, liked))
+
+    if not filtered_found:
         try:
             await message.edit_text(
                 '😕 Пока больше анкет не найдено. Попробуйте позже.',
@@ -200,14 +227,13 @@ async def _show_next_profile(
             )
         return
 
-    data = await state.get_data()
     last_profile_id = None if reset_cycle else data.get('search_last_profile_id')
-    pool = found
+    pool = filtered_found
     if isinstance(last_profile_id, str):
-        filtered = [item for item in found if str(item[0].id) != last_profile_id]
+        filtered = [item for item in filtered_found if str(item[0].id) != last_profile_id]
         if filtered:
             pool = filtered
-        elif len(found) == 1:
+        elif len(filtered_found) == 1:
             try:
                 await message.edit_text(
                     '😕 Пока больше анкет не найдено. Попробуйте позже.',
@@ -220,9 +246,7 @@ async def _show_next_profile(
                 )
             return
 
-    profile, owner = random.choice(pool)
-    subscribed = await interaction_service.is_subscribed(user_id, owner.id)
-    liked = await interaction_service.has_like(user_id, owner.id, game)
+    profile, owner, subscribed, liked = random.choice(pool)
     sent = await _send_or_edit_profile_card(
         message=message,
         caption=_search_card_text(profile, owner),
@@ -233,16 +257,19 @@ async def _show_next_profile(
             game=game,
             subscribed=subscribed,
             liked=liked,
+            include_previous=bool(history),
         ),
         photo_file_id=profile.profile_image_file_id,
     )
     await state.update_data(
         search_game=game.value,
         search_last_profile_id=str(profile.id),
+        search_current_profile_id=str(profile.id),
         search_current_target_user_id=owner.id,
         search_card_chat_id=sent.chat.id,
         search_card_message_id=sent.message_id,
         search_view_mode='game_card',
+        search_history_profile_ids=history,
     )
 
 
@@ -367,6 +394,87 @@ async def search_next_profile(
     )
 
 
+@router.callback_query(F.data.startswith(CB_SEARCH_PREV_PREFIX))
+async def search_prev_profile(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+    user_id, locale = await ensure_user_and_locale(callback.from_user, session)
+    locale = locale or i18n.default_locale
+    raw = (callback.data or '').replace(CB_SEARCH_PREV_PREFIX, '', 1)
+    game = _game_from_raw(raw)
+    if game is None:
+        await callback.answer('Игра пока недоступна', show_alert=True)
+        return
+
+    data = await state.get_data()
+    history_raw = data.get('search_history_profile_ids')
+    history: list[str] = [item for item in history_raw if isinstance(item, str)] if isinstance(history_raw, list) else []
+    if not history:
+        await callback.answer('Предыдущих анкет пока нет', show_alert=False)
+        return
+
+    profile_service = ProfileService(session)
+    interaction_service = InteractionService(session)
+    found = await profile_service.search_profiles(user_id, game)
+    found_map = {str(profile.id): (profile, owner) for profile, owner in found}
+
+    selected_profile = None
+    selected_owner = None
+    selected_subscribed = False
+    selected_liked = False
+    while history:
+        profile_id = history.pop()
+        pair = found_map.get(profile_id)
+        if pair is None:
+            continue
+        profile, owner = pair
+        subscribed = await interaction_service.is_subscribed(user_id, owner.id)
+        liked = await interaction_service.has_like(user_id, owner.id, game)
+        if subscribed and liked:
+            continue
+        selected_profile = profile
+        selected_owner = owner
+        selected_subscribed = subscribed
+        selected_liked = liked
+        break
+
+    if selected_profile is None or selected_owner is None:
+        await state.update_data(search_history_profile_ids=[])
+        await callback.answer('Предыдущая анкета недоступна', show_alert=False)
+        return
+
+    await callback.answer()
+    sent = await _send_or_edit_profile_card(
+        message=callback.message,
+        caption=_search_card_text(selected_profile, selected_owner),
+        reply_markup=search_profile_actions_keyboard(
+            i18n=i18n,
+            locale=locale,
+            target_user_id=selected_owner.id,
+            game=game,
+            subscribed=selected_subscribed,
+            liked=selected_liked,
+            include_previous=bool(history),
+        ),
+        photo_file_id=selected_profile.profile_image_file_id,
+    )
+    await state.update_data(
+        search_game=game.value,
+        search_last_profile_id=str(selected_profile.id),
+        search_current_profile_id=str(selected_profile.id),
+        search_current_target_user_id=selected_owner.id,
+        search_card_chat_id=sent.chat.id,
+        search_card_message_id=sent.message_id,
+        search_view_mode='game_card',
+        search_history_profile_ids=history,
+    )
+
+
 @router.callback_query(F.data.startswith(CB_SEARCH_RETRY_PREFIX))
 async def search_retry(
     callback: CallbackQuery,
@@ -466,6 +574,8 @@ async def search_like(
     if isinstance(callback.message, Message):
         data = await state.get_data()
         current_target = data.get('search_current_target_user_id')
+        history_raw = data.get('search_history_profile_ids')
+        history = [item for item in history_raw if isinstance(item, str)] if isinstance(history_raw, list) else []
         game_raw = data.get('search_game')
         current_game = _game_from_raw(game_raw) if isinstance(game_raw, str) else None
         if isinstance(current_target, int) and current_target == to_user_id and current_game == game:
@@ -478,6 +588,7 @@ async def search_like(
                     game=game,
                     subscribed=subscribed,
                     liked=True,
+                    include_previous=bool(history),
                 )
             )
 
@@ -511,10 +622,13 @@ async def search_view_liker(
         await callback.answer('Эта анкета больше недоступна.', show_alert=True)
         return
 
-    subscribed = await InteractionService(session).is_subscribed(user_id, liker_id)
-    liked = await InteractionService(session).has_like(user_id, liker_id, game)
+    interactions = InteractionService(session)
+    subscribed = await interactions.is_subscribed(user_id, liker_id)
+    liked = await interactions.has_like(user_id, liker_id, game)
+    history_raw = (await state.get_data()).get('search_history_profile_ids')
+    history = [item for item in history_raw if isinstance(item, str)] if isinstance(history_raw, list) else []
     await callback.answer()
-    await _send_or_edit_profile_card(
+    sent = await _send_or_edit_profile_card(
         message=callback.message,
         caption=_search_card_text(profile, user),
         reply_markup=search_profile_actions_keyboard(
@@ -526,10 +640,17 @@ async def search_view_liker(
             liked=liked,
             include_next=True,
             include_hide=True,
+            include_previous=bool(history),
         ),
         photo_file_id=profile.profile_image_file_id,
     )
-    await state.update_data(search_game=game.value, search_current_target_user_id=liker_id)
+    await state.update_data(
+        search_game=game.value,
+        search_current_profile_id=str(profile.id),
+        search_current_target_user_id=liker_id,
+        search_card_chat_id=sent.chat.id,
+        search_card_message_id=sent.message_id,
+    )
     await state.update_data(search_view_mode='game_card')
 
 
@@ -560,6 +681,8 @@ async def search_toggle_sub(
 
     data = await state.get_data()
     current_target = data.get('search_current_target_user_id')
+    history_raw = data.get('search_history_profile_ids')
+    history = [item for item in history_raw if isinstance(item, str)] if isinstance(history_raw, list) else []
     game_raw = data.get('search_game')
     game = _game_from_raw(game_raw) if isinstance(game_raw, str) else GameCode.MLBB
     view_mode = data.get('search_view_mode')
@@ -588,6 +711,7 @@ async def search_toggle_sub(
                 game=game,
                 subscribed=subscribed_now,
                 liked=await interactions.has_like(follower_id, target_id, game),
+                include_previous=bool(history),
             )
         )
     else:
@@ -735,8 +859,9 @@ async def search_view_profile(
         target_raw, source_raw = raw.split(':', 1)
         raw = target_raw
         from_message_notice = source_raw == 'msg'
+    normalized = raw.strip()
     try:
-        target_id = int(raw)
+        target_id = int(normalized)
     except ValueError:
         await callback.answer('Ошибка действия', show_alert=True)
         return
@@ -755,7 +880,7 @@ async def search_view_profile(
         and _game_from_raw(game_raw) is not None
     )
     await callback.answer()
-    await _send_or_edit_profile_card(
+    sent = await _send_or_edit_profile_card(
         message=callback.message,
         caption=_profile_text(payload),
         reply_markup=search_profile_notice_keyboard(
@@ -774,6 +899,8 @@ async def search_view_profile(
         search_profile_view_user_id=target_id,
         search_profile_view_source='message_notice' if from_message_notice else 'default',
         search_profile_has_back=has_back_to_card,
+        search_card_chat_id=sent.chat.id,
+        search_card_message_id=sent.message_id,
     )
 
 
@@ -839,10 +966,13 @@ async def search_user_profile_game(
         await callback.answer('Эта анкета больше недоступна.', show_alert=True)
         return
 
-    subscribed = await InteractionService(session).is_subscribed(viewer_id, target_id)
-    liked = await InteractionService(session).has_like(viewer_id, target_id, game)
+    interactions = InteractionService(session)
+    subscribed = await interactions.is_subscribed(viewer_id, target_id)
+    liked = await interactions.has_like(viewer_id, target_id, game)
+    history_raw = (await state.get_data()).get('search_history_profile_ids')
+    history = [item for item in history_raw if isinstance(item, str)] if isinstance(history_raw, list) else []
     await callback.answer()
-    await _send_or_edit_profile_card(
+    sent = await _send_or_edit_profile_card(
         message=callback.message,
         caption=_search_card_text(profile, user),
         reply_markup=search_profile_actions_keyboard(
@@ -854,10 +984,18 @@ async def search_user_profile_game(
             liked=liked,
             include_next=True,
             include_hide=False,
+            include_previous=bool(history),
         ),
         photo_file_id=profile.profile_image_file_id,
     )
-    await state.update_data(search_game=game.value, search_current_target_user_id=target_id, search_view_mode='game_card')
+    await state.update_data(
+        search_game=game.value,
+        search_current_profile_id=str(profile.id),
+        search_current_target_user_id=target_id,
+        search_card_chat_id=sent.chat.id,
+        search_card_message_id=sent.message_id,
+        search_view_mode='game_card',
+    )
 
 
 async def _render_current_search_card(
@@ -873,6 +1011,8 @@ async def _render_current_search_card(
     data = await state.get_data()
     target_id = data.get('search_current_target_user_id')
     game_raw = data.get('search_game')
+    history_raw = data.get('search_history_profile_ids')
+    history = [item for item in history_raw if isinstance(item, str)] if isinstance(history_raw, list) else []
     if not isinstance(target_id, int) or not isinstance(game_raw, str):
         return False
 
@@ -887,7 +1027,7 @@ async def _render_current_search_card(
 
     subscribed = await InteractionService(session).is_subscribed(viewer_id, target_id)
     liked = await InteractionService(session).has_like(viewer_id, target_id, game)
-    await _send_or_edit_profile_card(
+    sent = await _send_or_edit_profile_card(
         message=callback.message,
         caption=_search_card_text(profile, user),
         reply_markup=search_profile_actions_keyboard(
@@ -899,10 +1039,16 @@ async def _render_current_search_card(
             liked=liked,
             include_next=True,
             include_hide=False,
+            include_previous=bool(history),
         ),
         photo_file_id=profile.profile_image_file_id,
     )
-    await state.update_data(search_view_mode='game_card')
+    await state.update_data(
+        search_view_mode='game_card',
+        search_current_profile_id=str(profile.id),
+        search_card_chat_id=sent.chat.id,
+        search_card_message_id=sent.message_id,
+    )
     return True
 
 
@@ -925,7 +1071,7 @@ async def _render_user_profile_view(
         return False
     subscribed = await InteractionService(session).is_subscribed(viewer_id, target_id)
     payload = await UserService(session).get_profile_stats(target_id)
-    await _send_or_edit_profile_card(
+    sent = await _send_or_edit_profile_card(
         message=callback.message,
         caption=_profile_text(payload),
         reply_markup=search_profile_notice_keyboard(
@@ -944,6 +1090,8 @@ async def _render_user_profile_view(
         search_profile_view_user_id=target_id,
         search_profile_view_source='message_notice' if from_message_notice else 'default',
         search_profile_has_back=include_back_to_card,
+        search_card_chat_id=sent.chat.id,
+        search_card_message_id=sent.message_id,
     )
     return True
 
@@ -975,6 +1123,8 @@ async def search_back_to_profile(
     viewer_id, locale = await ensure_user_and_locale(callback.from_user, session)
     locale = locale or i18n.default_locale
     raw = (callback.data or '').replace(CB_SEARCH_BACK_TO_PROFILE_PREFIX, '', 1)
+    if ':' in raw:
+        raw = raw.split(':', 1)[0]
     try:
         target_id = int(raw)
     except ValueError:

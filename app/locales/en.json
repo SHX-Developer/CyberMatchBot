@@ -40,6 +40,8 @@
   "search.button.back_to_personal_profile": "⬅️ To personal profile",
   "search.button.hide_message": "🔺 Hide message",
   "search.button.next_profile": "➡️ Next profile",
+  "search.button.previous_profile": "⬅️ Previous profile",
+  "search.button.show_profile_card": "🕹 Show game profile",
   "search.button.retry": "🔄 Search again",
   "search.button.game_profiles": "🕹 Game profiles",
   "search.button.write": "💬 Write",

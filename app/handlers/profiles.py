@@ -95,6 +95,19 @@ def _safe(value: str | None) -> str:
     return 'Не указано'
 
 
+def _mythic_stars_value(raw: object) -> int | None:
+    if isinstance(raw, int) and raw > 0:
+        return raw
+    return None
+
+
+def _format_rank(rank: str | None, mythic_stars: int | None) -> str:
+    value = _safe(rank)
+    if rank == 'Мифический' and mythic_stars is not None and mythic_stars > 0:
+        return f'{value} ({mythic_stars} ⭐)'
+    return value
+
+
 def _dashboard_text(profiles_by_game: dict[GameCode, object]) -> str:
     lines = ['<b>🎮 Ваши игровые анкеты</b>', '']
     for game in SUPPORTED_GAMES:
@@ -124,7 +137,7 @@ def _profile_card_text(profile) -> str:
             f"<b>🎮 Анкета: {_game_title(profile.game)}</b>\n\n"
             f"<b>🆔 ID:</b> {_safe(profile.game_player_id)}\n"
             f"<b>🌍 Регион:</b> {_safe(profile.play_time)}\n\n"
-            f"<b>🎖 Ранг:</b> {_safe(profile.rank)}\n"
+            f"<b>🎖 Ранг:</b> {_format_rank(profile.rank, _mythic_stars_value(profile.mythic_stars))}\n"
             f"<b>🛡 Роль:</b> {main_role}\n"
             f"<b>🎯 Доп. линии:</b> {extra_roles}\n\n"
             f"<b>📝 О себе:</b> {_safe(profile.description)}"
@@ -134,7 +147,7 @@ def _profile_card_text(profile) -> str:
         f"<b>Анкета: {_game_title(profile.game)}</b>\n\n"
         f"<b>🎮 Игра:</b> {_game_title(profile.game)}\n"
         f"<b>🆔 ID:</b> {_safe(profile.game_player_id)}\n"
-        f"<b>🎖 Ранг:</b> {_safe(profile.rank)}\n"
+        f"<b>🎖 Ранг:</b> {_format_rank(profile.rank, _mythic_stars_value(profile.mythic_stars))}\n"
         f"<b>🛡 Роль:</b> {_safe(profile.role)}\n"
         f"<b>🌍 Сервер:</b> {_safe(profile.play_time)}\n"
         f"<b>📝 О себе:</b> {_safe(profile.description or profile.about)}"
@@ -152,8 +165,11 @@ def _mlbb_progress_caption(data: dict) -> str:
     if isinstance(data.get('mlbb_server'), str):
         top_block.append(f"<b>🌍 Регион:</b> {data['mlbb_server'].strip()}")
 
+    mythic_stars = _mythic_stars_value(data.get('mlbb_mythic_stars'))
     if isinstance(data.get('mlbb_rank'), str):
-        middle_block.append(f"<b>🎖 Ранг:</b> {data['mlbb_rank'].strip()}")
+        middle_block.append(
+            f"<b>🎖 Ранг:</b> {_format_rank(data['mlbb_rank'].strip(), mythic_stars)}"
+        )
 
     main_lane = None
     main_raw = data.get('mlbb_main_lane')
@@ -526,7 +542,12 @@ async def my_profiles_create_pick_handler(callback: CallbackQuery, state: FSMCon
         return
 
     await state.set_state(ProfilesSectionStates.mlbb_waiting_photo)
-    await state.update_data(create_game=game.value, create_mode='new', mlbb_extra_lanes=[])
+    await state.update_data(
+        create_game=game.value,
+        create_mode='new',
+        mlbb_extra_lanes=[],
+        mlbb_mythic_stars=None,
+    )
     await callback.answer()
     await _edit_screen(
         callback.message,
@@ -558,6 +579,7 @@ async def my_profiles_create_cancel_handler(callback: CallbackQuery, state: FSMC
                 not profile.game_player_id
                 or not profile.profile_image_file_id
                 or not profile.rank
+                or (profile.rank == 'Мифический' and (profile.mythic_stars is None or profile.mythic_stars <= 0))
                 or not profile.play_time
                 or profile.main_lane is None
                 or not profile.extra_lanes
@@ -609,7 +631,7 @@ async def mlbb_create_photo_handler(
     except TelegramBadRequest:
         pass
     prompt = await message.answer(
-        "<b>🆔 Введите ваши ID из игры:</b>\n\nПример: <code>1129099628(13762)</code>",
+        "<b>🆔 Отправьте UID из игры (без Zone ID):</b>\n\nПример: <code>12345767890</code>",
         reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
@@ -634,7 +656,7 @@ async def mlbb_create_game_id_handler(message: Message, state: FSMContext, sessi
     game_id_raw = (message.text or '').strip()
     if not is_valid_mlbb_player_id(game_id_raw):
         await message.answer(
-            '❌ <b>Неверный формат ID.</b>\n\nВведите в формате:\n<code>1129099628(13762)</code>',
+            '❌ <b>Неверный формат UID.</b>\n\nОтправьте только UID без Zone ID.\nПример: <code>12345767890</code>',
             reply_markup=my_profiles_create_cancel_keyboard(),
         )
         return
@@ -686,6 +708,8 @@ async def mlbb_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
         return
 
     await state.update_data(mlbb_rank=rank)
+    if rank != 'Мифический':
+        await state.update_data(mlbb_mythic_stars=None)
     data = await state.get_data()
     photo_file_id = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
     await _edit_screen_by_ref(
@@ -695,9 +719,18 @@ async def mlbb_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
         reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
-    await state.set_state(ProfilesSectionStates.mlbb_waiting_main_lane)
     await callback.answer()
     await _delete_prompt_by_ref(state, callback.message)
+    if rank == 'Мифический':
+        await state.set_state(ProfilesSectionStates.mlbb_waiting_mythic_stars)
+        prompt = await callback.message.answer(
+            '⭐ <b>Введите количество звезд (только число):</b>',
+            reply_markup=my_profiles_create_cancel_keyboard(),
+        )
+        await _remember_prompt_message(state, prompt)
+        return
+
+    await state.set_state(ProfilesSectionStates.mlbb_waiting_main_lane)
     prompt = await callback.message.answer(
         '🛡 <b>Выберите вашу основную линию:</b>',
         reply_markup=my_profiles_mlbb_main_lane_keyboard(i18n, locale),
@@ -711,6 +744,49 @@ async def mlbb_create_rank_invalid_handler(message: Message, state: FSMContext, 
         return
     await ensure_user_and_locale(message.from_user, session)
     await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_mlbb_rank_keyboard())
+
+
+@router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_mythic_stars))
+async def mlbb_create_mythic_stars_handler(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    if message.from_user is None:
+        return
+    _, locale = await ensure_user_and_locale(message.from_user, session)
+    locale = locale or i18n.default_locale
+    raw = (message.text or '').strip()
+    if not raw.isdigit():
+        await message.answer('Введите количество звезд цифрами.', reply_markup=my_profiles_create_cancel_keyboard())
+        return
+    stars = int(raw)
+    if stars <= 0 or stars > 999:
+        await message.answer('Количество звезд должно быть от 1 до 999.', reply_markup=my_profiles_create_cancel_keyboard())
+        return
+
+    await state.update_data(mlbb_mythic_stars=stars)
+    data = await state.get_data()
+    photo_file_id = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
+    await _edit_screen_by_ref(
+        state,
+        message,
+        caption=_mlbb_progress_caption(data),
+        reply_markup=None,
+        photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
+    )
+    await state.set_state(ProfilesSectionStates.mlbb_waiting_main_lane)
+    await _delete_prompt_by_ref(state, message)
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
+    prompt = await message.answer(
+        '🛡 <b>Выберите вашу основную линию:</b>',
+        reply_markup=my_profiles_mlbb_main_lane_keyboard(i18n, locale),
+    )
+    await _remember_prompt_message(state, prompt)
 
 
 @router.callback_query(StateFilter(ProfilesSectionStates.mlbb_waiting_main_lane), F.data.startswith(CB_MY_PROFILES_MLBB_MAIN_PREFIX))
@@ -943,6 +1019,9 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         await message.answer('Выберите хотя бы одну дополнительную линию.', reply_markup=my_profiles_create_cancel_keyboard())
         return
 
+    mythic_stars_raw = data.get('mlbb_mythic_stars')
+    mythic_stars = int(mythic_stars_raw) if isinstance(mythic_stars_raw, int) and mythic_stars_raw > 0 else None
+
     profile = await ProfileService(session).save_mlbb_profile(
         owner_id=user_id,
         game_player_id=game_id,
@@ -953,6 +1032,7 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         main_lane=main_lane,
         extra_lanes=extra_lanes,
         description=about,
+        mythic_stars=mythic_stars if rank == 'Мифический' else None,
     )
 
     await _delete_prompt_by_ref(state, message)
@@ -1021,6 +1101,7 @@ async def my_profiles_refill_handler(callback: CallbackQuery, state: FSMContext,
         mlbb_extra_lanes=[],
         mlbb_server=None,
         mlbb_about_preview=None,
+        mlbb_mythic_stars=None,
     )
     await callback.answer()
     await _edit_screen(
@@ -1074,7 +1155,7 @@ async def my_profiles_edit_field_handler(
         await state.set_state(ProfilesSectionStates.edit_waiting_id)
         await state.update_data(edit_field=field)
         prompt = await callback.message.answer(
-            '<b>🆔 Введите ваши ID из игры:</b>\n\nПример: <code>1129099628(13762)</code>',
+            '<b>🆔 Отправьте UID из игры (без Zone ID):</b>\n\nПример: <code>12345767890</code>',
             reply_markup=my_profiles_edit_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
@@ -1156,6 +1237,7 @@ async def my_profiles_edit_field_handler(
         ProfilesSectionStates.edit_waiting_photo,
         ProfilesSectionStates.edit_waiting_id,
         ProfilesSectionStates.edit_waiting_rank,
+        ProfilesSectionStates.edit_waiting_mythic_stars,
         ProfilesSectionStates.edit_waiting_main_lane,
         ProfilesSectionStates.edit_waiting_extra_lanes,
         ProfilesSectionStates.edit_waiting_server,
@@ -1215,7 +1297,9 @@ async def my_profiles_edit_id_handler(message: Message, state: FSMContext, sessi
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     game_id_raw = (message.text or '').strip()
     if not is_valid_mlbb_player_id(game_id_raw):
-        notice = await message.answer('❌ <b>Неверный формат ID.</b>\n\nВведите в формате:\n<code>1129099628(13762)</code>')
+        notice = await message.answer(
+            '❌ <b>Неверный формат UID.</b>\n\nОтправьте только UID без Zone ID.\nПример: <code>12345767890</code>'
+        )
         await _remember_temp_notice(state, notice)
         return
     if await ProfileService(session).mlbb_id_exists(game_id_raw, exclude_owner_id=user_id):
@@ -1250,12 +1334,23 @@ async def my_profiles_edit_rank_handler(callback: CallbackQuery, state: FSMConte
         await callback.answer('Неверный ранг', show_alert=True)
         return
 
-    profile = await ProfileService(session).update_mlbb_profile_fields(owner_id=user_id, rank=rank)
+    await callback.answer()
+    if rank == 'Мифический':
+        await state.set_state(ProfilesSectionStates.edit_waiting_mythic_stars)
+        await state.update_data(edit_field='rank')
+        await _delete_prompt_by_ref(state, callback.message)
+        prompt = await callback.message.answer(
+            '⭐ <b>Введите количество звезд (только число):</b>',
+            reply_markup=my_profiles_edit_cancel_keyboard(),
+        )
+        await _remember_prompt_message(state, prompt)
+        return
+
+    profile = await ProfileService(session).update_mlbb_profile_fields(owner_id=user_id, rank=rank, mythic_stars=None)
     if profile is None:
         await callback.answer('Анкета не найдена', show_alert=True)
         return
 
-    await callback.answer()
     await _delete_prompt_by_ref(state, callback.message)
     await _finalize_profile_edit_success(state, callback.message, session, user_id)
 
@@ -1264,6 +1359,40 @@ async def my_profiles_edit_rank_handler(callback: CallbackQuery, state: FSMConte
 async def my_profiles_edit_rank_invalid_handler(message: Message, state: FSMContext) -> None:
     notice = await message.answer('Выберите ранг кнопками ниже.')
     await _remember_temp_notice(state, notice)
+
+
+@router.message(StateFilter(ProfilesSectionStates.edit_waiting_mythic_stars))
+async def my_profiles_edit_mythic_stars_handler(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if message.from_user is None:
+        return
+
+    user_id, _ = await ensure_user_and_locale(message.from_user, session)
+    raw = (message.text or '').strip()
+    if not raw.isdigit():
+        notice = await message.answer('Введите количество звезд цифрами.')
+        await _remember_temp_notice(state, notice)
+        return
+    stars = int(raw)
+    if stars <= 0 or stars > 999:
+        notice = await message.answer('Количество звезд должно быть от 1 до 999.')
+        await _remember_temp_notice(state, notice)
+        return
+
+    profile = await ProfileService(session).update_mlbb_profile_fields(
+        owner_id=user_id,
+        rank='Мифический',
+        mythic_stars=stars,
+    )
+    if profile is None:
+        await message.answer('Анкета не найдена.')
+        return
+
+    await _delete_prompt_by_ref(state, message)
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
+    await _finalize_profile_edit_success(state, message, session, user_id)
 
 
 @router.callback_query(

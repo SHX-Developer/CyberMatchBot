@@ -40,6 +40,8 @@
   "search.button.back_to_personal_profile": "⬅️ Shaxsiy profilga",
   "search.button.hide_message": "🔺 Xabarni yashirish",
   "search.button.next_profile": "➡️ Keyingi anketa",
+  "search.button.previous_profile": "⬅️ Oldingi anketa",
+  "search.button.show_profile_card": "🕹 Anketani ko'rsatish",
   "search.button.retry": "🔄 Qayta qidirish",
   "search.button.game_profiles": "🕹 O'yin anketalari",
   "search.button.write": "💬 Yozish",

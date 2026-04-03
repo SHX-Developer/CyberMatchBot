@@ -46,6 +46,7 @@ class ProfileRepository:
         profile.main_lane = None
         profile.extra_lanes = None
         profile.description = None
+        profile.mythic_stars = None
         await self.session.flush()
         return profile
 
@@ -61,6 +62,7 @@ class ProfileRepository:
         main_lane: MlbbLaneCode,
         extra_lanes: list[MlbbLaneCode],
         description: str,
+        mythic_stars: int | None = None,
     ) -> PlayerProfile:
         profile.game_player_id = game_player_id
         profile.profile_image_file_id = profile_image_file_id
@@ -71,6 +73,7 @@ class ProfileRepository:
         profile.extra_lanes = [lane.value for lane in extra_lanes]
         profile.description = description
         profile.about = description
+        profile.mythic_stars = mythic_stars
         await self.session.flush()
         return profile
 
