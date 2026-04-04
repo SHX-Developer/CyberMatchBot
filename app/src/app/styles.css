@@ -1,10 +1,11 @@
 :root {
   --bg: #0d1117;
-  --panel: #161b22;
-  --line: #30363d;
+  --panel: #111a24;
+  --line: #2f3a47;
   --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #2f81f7;
+  --muted: #9fb0c2;
+  --accent: #3b82f6;
+  --danger: #dc2626;
 }
 
 * {
@@ -19,48 +20,253 @@ body,
 }
 
 body {
-  background: radial-gradient(1200px 700px at 80% -20%, #1f2a44 0%, var(--bg) 45%);
+  background: radial-gradient(1200px 700px at 80% -20%, #1a2940 0%, var(--bg) 45%);
   color: var(--text);
-  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
 }
 
 .page {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
   padding: 20px;
 }
 
-.card {
-  width: min(640px, 100%);
-  background: color-mix(in oklab, var(--panel) 94%, black);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: 24px;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+.shell {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+}
+
+.topbar {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
 }
 
 .kicker {
   color: var(--accent);
   font-weight: 700;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
 }
 
 h1 {
-  margin: 0 0 12px;
-  font-size: 28px;
+  margin-bottom: 8px;
 }
 
 .muted {
   color: var(--muted);
-  margin: 0 0 18px;
 }
 
-.meta {
-  margin: 0;
+.user-form {
+  min-width: 290px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.user-form label,
+.user-form small {
+  display: block;
+  color: var(--muted);
+}
+
+.user-form small {
+  margin-top: 8px;
+}
+
+.menu-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.menu-row.wrap {
+  flex-wrap: wrap;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: #1e293b;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+
+button.active {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 35%, #1e293b);
+}
+
+button.danger {
+  border-color: color-mix(in oklab, var(--danger) 80%, #000);
+  background: color-mix(in oklab, var(--danger) 25%, #1e293b);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #0f172a;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+
+textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.panel {
+  margin-top: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.grid.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.grid.two.split {
+  align-items: flex-start;
+}
+
+.item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item span {
+  color: var(--muted);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.card-sm {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 7px;
+}
+
+.form {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.form-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.list {
+  margin: 12px 0 0;
   padding-left: 18px;
+  display: grid;
+  gap: 8px;
 }
 
-.meta li {
+.list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.list-buttons {
+  display: grid;
+  gap: 7px;
   margin-bottom: 8px;
+}
+
+.messages {
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  max-height: 380px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.msg {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: #0f172a;
+}
+
+.msg.own {
+  background: #13243e;
+  border-color: #26486d;
+}
+
+.error {
+  color: #fda4af;
+  margin: 10px 0;
+}
+
+@media (max-width: 920px) {
+  .topbar {
+    flex-direction: column;
+  }
+
+  .user-form {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .grid.two,
+  .grid.two.split {
+    grid-template-columns: 1fr;
+  }
+
+  .form-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

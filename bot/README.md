@@ -69,3 +69,9 @@ alembic upgrade head
 ```bash
 python -m app.main
 ```
+
+## Web API для React Web App (локально)
+
+```bash
+uvicorn app.web.main:app --reload --host 0.0.0.0 --port 8000
+```
