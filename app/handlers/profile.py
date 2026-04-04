@@ -145,7 +145,7 @@ def _stats_caption(*, i18n: LocalizationManager, locale: str, payload: dict[str,
         return None
 
     likes, followers, subscriptions, friends = _stats_values(payload)
-    title = i18n.t(locale, 'profile.stats.title.with_username', username=_username_value(user.username, locale, i18n))
+    title = i18n.t(locale, 'profile.stats.title.with_username', username=_full_name_value(user.full_name, locale, i18n))
     return i18n.t(
         locale,
         'profile.section.stats.only',

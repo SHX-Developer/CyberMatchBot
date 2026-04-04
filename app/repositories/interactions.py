@@ -81,17 +81,16 @@ class InteractionRepository:
         followers_stmt = select(func.count(UserSubscription.id)).where(UserSubscription.followed_user_id == user_id)
         subscriptions_stmt = select(func.count(UserSubscription.id)).where(UserSubscription.follower_user_id == user_id)
 
-        reciprocal_like = aliased(UserLike)
+        reciprocal_subscription = aliased(UserSubscription)
         friends_stmt = (
-            select(func.count(func.distinct(UserLike.from_user_id)))
-            .where(UserLike.to_user_id == user_id)
+            select(func.count(func.distinct(UserSubscription.followed_user_id)))
+            .where(UserSubscription.follower_user_id == user_id)
             .where(
                 exists(
                     select(1).where(
                         and_(
-                            reciprocal_like.from_user_id == user_id,
-                            reciprocal_like.to_user_id == UserLike.from_user_id,
-                            reciprocal_like.game == UserLike.game,
+                            reciprocal_subscription.follower_user_id == UserSubscription.followed_user_id,
+                            reciprocal_subscription.followed_user_id == user_id,
                         )
                     )
                 )
@@ -170,24 +169,22 @@ class InteractionRepository:
         return self._rows_to_items(rows)
 
     async def list_friends(self, user_id: int, *, limit: int = 50) -> list[dict[str, int | str | None]]:
-        reciprocal_like = aliased(UserLike)
+        reciprocal_subscription = aliased(UserSubscription)
         stmt = (
             select(User.id.label('user_id'), User.username, User.full_name)
-            .join(UserLike, UserLike.from_user_id == User.id)
-            .where(UserLike.to_user_id == user_id)
+            .join(UserSubscription, UserSubscription.followed_user_id == User.id)
+            .where(UserSubscription.follower_user_id == user_id)
             .where(
                 exists(
                     select(1).where(
                         and_(
-                            reciprocal_like.from_user_id == user_id,
-                            reciprocal_like.to_user_id == UserLike.from_user_id,
-                            reciprocal_like.game == UserLike.game,
+                            reciprocal_subscription.follower_user_id == User.id,
+                            reciprocal_subscription.followed_user_id == user_id,
                         )
                     )
                 )
             )
-            .group_by(User.id, User.username, User.full_name)
-            .order_by(func.max(UserLike.created_at).desc())
+            .order_by(UserSubscription.created_at.desc())
             .limit(limit)
         )
         rows = (await self.session.execute(stmt)).all()

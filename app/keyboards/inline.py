@@ -41,7 +41,7 @@ from app.constants import (
     CB_SEARCH_CANCEL_MESSAGE,
     CB_ACTIVITY_BACK,
     CB_ACTIVITY_OPEN,
-    CB_ACTIVITY_REFRESH_PREFIX,
+    CB_ACTIVITY_PAGE_PREFIX,
     CB_ACTIVITY_SECTION_PREFIX,
     CB_SEARCH_CREATE_PROFILE,
     CB_SEARCH_GAME_PICK_PREFIX,
@@ -292,7 +292,7 @@ def my_profile_details_keyboard() -> InlineKeyboardMarkup:
     builder.button(text='✏️ Изменить анкету', callback_data=CB_MY_PROFILES_EDIT)
     builder.button(text='🔄 Заполнить заново', callback_data=CB_MY_PROFILES_REFILL)
     builder.button(text='🗑 Удалить анкету', callback_data=CB_MY_PROFILES_DELETE_ASK)
-    builder.button(text='⬅️ Назад', callback_data=CB_MY_PROFILES_BACK)
+    builder.button(text='⬅ Назад', callback_data=CB_MY_PROFILES_BACK)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -302,7 +302,7 @@ def my_profiles_create_game_keyboard(*, games: list[GameCode]) -> InlineKeyboard
     for game in games:
         title = 'Mobile Legends' if game == GameCode.MLBB else 'Неизвестная игра'
         builder.button(text=title, callback_data=f'{CB_MY_PROFILES_CREATE_PICK_PREFIX}{game.value}')
-    builder.button(text='⬅️ Назад', callback_data=CB_MY_PROFILES_BACK)
+    builder.button(text='⬅ Назад', callback_data=CB_MY_PROFILES_BACK)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -324,7 +324,7 @@ def my_profiles_edit_fields_keyboard() -> InlineKeyboardMarkup:
     builder.button(text='🛡 Роль', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}role')
     builder.button(text='🎯 Доп. линии', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}extra_lanes')
     builder.button(text='📝 О себе', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}about')
-    builder.button(text='⬅️ Назад к анкете', callback_data=CB_MY_PROFILES_CARD_BACK)
+    builder.button(text='⬅ Назад к анкете', callback_data=CB_MY_PROFILES_CARD_BACK)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -462,20 +462,23 @@ def search_profile_actions_keyboard(
         builder.button(text=i18n.t(locale, 'search.button.back_to_personal_profile'), callback_data=f'{CB_SEARCH_BACK_TO_PROFILE_PREFIX}{back_to_profile_user_id}')
     if include_hide:
         builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
-    if include_next:
-        builder.button(text=i18n.t(locale, 'search.button.next_profile'), callback_data=f'{CB_SEARCH_NEXT_PREFIX}{game.value}')
     if include_previous:
         builder.button(text=i18n.t(locale, 'search.button.previous_profile'), callback_data=f'{CB_SEARCH_PREV_PREFIX}{game.value}')
+    if include_next:
+        builder.button(text=i18n.t(locale, 'search.button.next_profile'), callback_data=f'{CB_SEARCH_NEXT_PREFIX}{game.value}')
 
     row_pattern = [1, 2]
     if back_to_profile_user_id is not None:
         row_pattern.append(1)
     if include_hide:
         row_pattern.append(1)
-    if include_next:
-        row_pattern.append(1)
-    if include_previous:
-        row_pattern.append(1)
+    if include_previous and include_next:
+        row_pattern.append(2)
+    else:
+        if include_previous:
+            row_pattern.append(1)
+        if include_next:
+            row_pattern.append(1)
     builder.adjust(*row_pattern)
     return builder.as_markup()
 
@@ -503,6 +506,7 @@ def search_profile_notice_keyboard(
     subscribed: bool,
     game: GameCode = GameCode.MLBB,
     include_back_to_card: bool = True,
+    include_back_to_activity: bool = False,
     include_hide_notice: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -512,10 +516,14 @@ def search_profile_notice_keyboard(
     builder.button(text=sub_text, callback_data=f'{CB_SEARCH_SUB_PREFIX}{user_id}')
     if include_back_to_card:
         builder.button(text=i18n.t(locale, 'search.button.back_to_game_profile'), callback_data=CB_SEARCH_BACK_TO_CARD)
+    if include_back_to_activity:
+        builder.button(text=i18n.t(locale, 'search.button.back_to_activity'), callback_data=CB_ACTIVITY_BACK)
     if include_hide_notice:
         builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
     row_pattern = [1, 2]
     if include_back_to_card:
+        row_pattern.append(1)
+    if include_back_to_activity:
         row_pattern.append(1)
     if include_hide_notice:
         row_pattern.append(1)
@@ -535,20 +543,54 @@ def search_user_profiles_games_keyboard(*, i18n: LocalizationManager, locale: st
 
 def activity_open_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'activity.button.my_subscriptions'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscriptions')
-    builder.button(text=i18n.t(locale, 'activity.button.my_subscribers'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscribers')
-    builder.button(text=i18n.t(locale, 'activity.button.my_likes'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}likes')
-    builder.button(text=i18n.t(locale, 'activity.button.who_liked_me'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}liked_by')
-    builder.button(text=i18n.t(locale, 'activity.button.friends'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}friends')
+    builder.button(text=i18n.t(locale, 'activity.button.my_subscriptions'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscriptions:1')
+    builder.button(text=i18n.t(locale, 'activity.button.my_subscribers'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscribers:1')
+    builder.button(text=i18n.t(locale, 'activity.button.my_likes'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}likes:1')
+    builder.button(text=i18n.t(locale, 'activity.button.who_liked_me'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}liked_by:1')
+    builder.button(text=i18n.t(locale, 'activity.button.friends'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}friends:1')
     builder.adjust(1)
     return builder.as_markup()
 
 
-def activity_section_keyboard(i18n: LocalizationManager, locale: str, section: str) -> InlineKeyboardMarkup:
+def activity_section_keyboard(
+    i18n: LocalizationManager,
+    locale: str,
+    *,
+    section: str,
+    page: int,
+    items: list[dict[str, int | str | None]],
+    has_previous: bool,
+    has_next: bool,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'activity.button.refresh'), callback_data=f'{CB_ACTIVITY_REFRESH_PREFIX}{section}')
+    for item in items:
+        user_id = item.get('user_id')
+        if not isinstance(user_id, int):
+            continue
+        nickname_raw = item.get('full_name')
+        if isinstance(nickname_raw, str) and nickname_raw.strip():
+            nickname = nickname_raw.strip()
+        else:
+            nickname = i18n.t(locale, 'activity.user.fallback', user_id=user_id)
+        builder.button(text=nickname, callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{user_id}:activity')
+
+    if has_previous:
+        builder.button(
+            text=i18n.t(locale, 'activity.button.prev_page'),
+            callback_data=f'{CB_ACTIVITY_PAGE_PREFIX}{section}:{page - 1}',
+        )
+    if has_next:
+        builder.button(
+            text=i18n.t(locale, 'activity.button.next_page'),
+            callback_data=f'{CB_ACTIVITY_PAGE_PREFIX}{section}:{page + 1}',
+        )
     builder.button(text=i18n.t(locale, 'activity.button.back_to_activity'), callback_data=CB_ACTIVITY_BACK)
-    builder.adjust(1)
+    if has_previous and has_next:
+        builder.adjust(*(1 for _ in items), 2, 1)
+    elif has_previous or has_next:
+        builder.adjust(*(1 for _ in items), 1, 1)
+    else:
+        builder.adjust(*(1 for _ in items), 1)
     return builder.as_markup()
 
 

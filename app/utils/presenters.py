@@ -1,4 +1,5 @@
 from html import escape
+import re
 
 from app.database import GameCode, MlbbLaneCode
 from app.locales import LocalizationManager
@@ -80,7 +81,17 @@ def format_mlbb_profile_card(
         extra_lanes = i18n.t(locale, 'value.not_set')
 
     description = profile.description or i18n.t(locale, 'value.not_set')
-    game_player_id = profile.game_player_id or i18n.t(locale, 'value.not_set')
+    raw_game_player_id = profile.game_player_id or i18n.t(locale, 'value.not_set')
+    game_player_id = raw_game_player_id
+    if raw_game_player_id and raw_game_player_id != i18n.t(locale, 'value.not_set'):
+        if '(' in raw_game_player_id:
+            trimmed = raw_game_player_id.split('(', 1)[0].strip()
+            if trimmed:
+                game_player_id = trimmed
+        else:
+            match = re.match(r'^(\d+)', raw_game_player_id.strip())
+            if match is not None:
+                game_player_id = match.group(1)
 
     return i18n.t(
         locale,

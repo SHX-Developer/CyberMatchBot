@@ -57,5 +57,6 @@ CB_SEARCH_CANCEL_MESSAGE = 'search:cancel_message'
 
 CB_ACTIVITY_OPEN = 'activity:open'
 CB_ACTIVITY_SECTION_PREFIX = 'activity:section:'
+CB_ACTIVITY_PAGE_PREFIX = 'activity:page:'
 CB_ACTIVITY_REFRESH_PREFIX = 'activity:refresh:'
 CB_ACTIVITY_BACK = 'activity:back'

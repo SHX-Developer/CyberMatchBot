@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -95,6 +96,20 @@ def _safe(value: str | None) -> str:
     return 'Не указано'
 
 
+def _public_game_id(value: str | None) -> str:
+    raw = _safe(value)
+    if raw == 'Не указано':
+        return raw
+    if '(' in raw:
+        trimmed = raw.split('(', 1)[0].strip()
+        if trimmed:
+            return trimmed
+    match = re.match(r'^(\d+)', raw)
+    if match is not None:
+        return match.group(1)
+    return raw
+
+
 def _mythic_stars_value(raw: object) -> int | None:
     if isinstance(raw, int) and raw > 0:
         return raw
@@ -135,7 +150,7 @@ def _profile_card_text(profile) -> str:
 
         return (
             f"<b>🎮 Анкета: {_game_title(profile.game)}</b>\n\n"
-            f"<b>🆔 ID:</b> {_safe(profile.game_player_id)}\n"
+            f"<b>🆔 ID:</b> {_public_game_id(profile.game_player_id)}\n"
             f"<b>🌍 Регион:</b> {_safe(profile.play_time)}\n\n"
             f"<b>🎖 Ранг:</b> {_format_rank(profile.rank, _mythic_stars_value(profile.mythic_stars))}\n"
             f"<b>🛡 Роль:</b> {main_role}\n"
@@ -146,7 +161,7 @@ def _profile_card_text(profile) -> str:
     return (
         f"<b>Анкета: {_game_title(profile.game)}</b>\n\n"
         f"<b>🎮 Игра:</b> {_game_title(profile.game)}\n"
-        f"<b>🆔 ID:</b> {_safe(profile.game_player_id)}\n"
+        f"<b>🆔 ID:</b> {_public_game_id(profile.game_player_id)}\n"
         f"<b>🎖 Ранг:</b> {_format_rank(profile.rank, _mythic_stars_value(profile.mythic_stars))}\n"
         f"<b>🛡 Роль:</b> {_safe(profile.role)}\n"
         f"<b>🌍 Сервер:</b> {_safe(profile.play_time)}\n"
