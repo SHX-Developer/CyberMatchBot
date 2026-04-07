@@ -25,6 +25,7 @@ class ProfilesSectionStates(StatesGroup):
     edit_waiting_extra_lanes = State()
     edit_waiting_server = State()
     edit_waiting_about = State()
+    edit_waiting_genshin_level = State()
     mlbb_waiting_photo = State()
     mlbb_waiting_game_id = State()
     mlbb_waiting_rank = State()
@@ -33,6 +34,15 @@ class ProfilesSectionStates(StatesGroup):
     mlbb_waiting_extra_lanes = State()
     mlbb_waiting_server = State()
     mlbb_waiting_about = State()
+    genshin_waiting_photo = State()
+    genshin_waiting_uid = State()
+    genshin_waiting_region = State()
+    genshin_waiting_adventure_level = State()
+    genshin_waiting_about = State()
+    pubg_waiting_photo = State()
+    pubg_waiting_uid = State()
+    pubg_waiting_rank = State()
+    pubg_waiting_about = State()
 
 
 class SearchStates(StatesGroup):

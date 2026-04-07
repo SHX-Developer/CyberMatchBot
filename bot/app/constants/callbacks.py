@@ -36,6 +36,12 @@ CB_MY_PROFILES_MLBB_EXTRA_PREFIX = 'profiles:mlbb:extra:'
 CB_MY_PROFILES_MLBB_EXTRA_DONE = 'profiles:mlbb:extra:done'
 CB_MY_PROFILES_MLBB_RANK_PREFIX = 'profiles:mlbb:rank:'
 CB_MY_PROFILES_MLBB_SERVER_PREFIX = 'profiles:mlbb:server:'
+CB_MY_PROFILES_GENSHIN_REGION_PREFIX = 'profiles:genshin:region:'
+CB_MY_PROFILES_PUBG_RANK_PREFIX = 'profiles:pubg:rank:'
+
+CB_ADMIN_PROFILE_APPROVE_PREFIX = 'adm:ok:'
+CB_ADMIN_PROFILE_DELETE_PREFIX = 'adm:del:'
+CB_ADMIN_PROFILE_DELETE_REASON_PREFIX = 'adm:why:'
 
 CB_SEARCH_GAME_PICK_PREFIX = 'search:pick:'
 CB_SEARCH_CREATE_PROFILE = 'search:create_profile'

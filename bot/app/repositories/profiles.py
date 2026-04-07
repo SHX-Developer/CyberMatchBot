@@ -77,6 +77,30 @@ class ProfileRepository:
         await self.session.flush()
         return profile
 
+    async def save_generic_profile_data(
+        self,
+        profile: PlayerProfile,
+        *,
+        game_player_id: str,
+        profile_image_file_id: str,
+        rank: str | None,
+        role: str | None,
+        server: str | None,
+        description: str,
+    ) -> PlayerProfile:
+        profile.game_player_id = game_player_id
+        profile.profile_image_file_id = profile_image_file_id
+        profile.rank = rank
+        profile.role = role
+        profile.play_time = server
+        profile.description = description
+        profile.about = description
+        profile.main_lane = None
+        profile.extra_lanes = None
+        profile.mythic_stars = None
+        await self.session.flush()
+        return profile
+
     async def get_owned_profile(self, owner_id: int, profile_id: uuid.UUID) -> PlayerProfile | None:
         stmt = select(PlayerProfile).where(
             and_(PlayerProfile.id == profile_id, PlayerProfile.owner_id == owner_id)
@@ -105,8 +129,21 @@ class ProfileRepository:
         return list(result.all())
 
     async def mlbb_id_exists(self, game_player_id: str, *, exclude_owner_id: int | None = None) -> bool:
+        return await self.game_id_exists(
+            game=GameCode.MLBB,
+            game_player_id=game_player_id,
+            exclude_owner_id=exclude_owner_id,
+        )
+
+    async def game_id_exists(
+        self,
+        *,
+        game: GameCode,
+        game_player_id: str,
+        exclude_owner_id: int | None = None,
+    ) -> bool:
         conditions = [
-            PlayerProfile.game == GameCode.MLBB,
+            PlayerProfile.game == game,
             PlayerProfile.game_player_id == game_player_id,
         ]
         if exclude_owner_id is not None:

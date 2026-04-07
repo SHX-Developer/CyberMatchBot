@@ -9,6 +9,8 @@ class LanguageCode(str, Enum):
 
 class GameCode(str, Enum):
     MLBB = 'mlbb'
+    GENSHIN_IMPACT = 'genshin_impact'
+    PUBG_MOBILE = 'pubg_mobile'
     CS_GO = 'cs_go'
 
 

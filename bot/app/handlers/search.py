@@ -327,7 +327,9 @@ async def search_create_profile_hint(callback: CallbackQuery, session: AsyncSess
     await _send_or_edit_profile_card(
         message=callback.message,
         caption="<b>🎮 Выберите игру для создания анкеты</b>",
-        reply_markup=my_profiles_create_game_keyboard(games=[GameCode.MLBB]),
+        reply_markup=my_profiles_create_game_keyboard(
+            games=[GameCode.MLBB, GameCode.GENSHIN_IMPACT, GameCode.PUBG_MOBILE]
+        ),
         photo_file_id=MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
 
@@ -568,14 +570,14 @@ async def search_like(
                     text += f"\nЮзернейм: @{other.username}"
                     builder = InlineKeyboardBuilder()
                     builder.button(text='💬 Перейти в ЛС', url=f'https://t.me/{other.username}')
-                    builder.button(text='🔺 Скрыть сообщение', callback_data=CB_SEARCH_HIDE_NOTICE)
+                    builder.button(text='⬅ Скрыть сообщение', callback_data=CB_SEARCH_HIDE_NOTICE)
                     builder.adjust(1)
                     keyboard = builder.as_markup()
                 else:
                     text += '\nЮзернейм: не указан'
                     builder = InlineKeyboardBuilder()
                     builder.button(text='Написать в боте', callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{other.id}')
-                    builder.button(text='🔺 Скрыть сообщение', callback_data=CB_SEARCH_HIDE_NOTICE)
+                    builder.button(text='⬅ Скрыть сообщение', callback_data=CB_SEARCH_HIDE_NOTICE)
                     builder.adjust(1)
                     keyboard = builder.as_markup()
                 await callback.bot.send_message(receiver, text, reply_markup=keyboard)

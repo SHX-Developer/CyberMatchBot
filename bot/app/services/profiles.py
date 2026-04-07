@@ -60,6 +60,47 @@ class ProfileService:
             mythic_stars=mythic_stars,
         )
 
+    async def save_genshin_profile(
+        self,
+        *,
+        owner_id: int,
+        game_player_id: str,
+        profile_image_file_id: str,
+        region: str,
+        adventure_level: int,
+        description: str,
+    ) -> PlayerProfile:
+        profile, _ = await self.create_profile_or_get_existing(owner_id, GameCode.GENSHIN_IMPACT)
+        return await self.profile_repo.save_generic_profile_data(
+            profile,
+            game_player_id=game_player_id,
+            profile_image_file_id=profile_image_file_id,
+            rank=str(adventure_level),
+            role=None,
+            server=region,
+            description=description,
+        )
+
+    async def save_pubg_profile(
+        self,
+        *,
+        owner_id: int,
+        game_player_id: str,
+        profile_image_file_id: str,
+        rank: str,
+        description: str,
+    ) -> PlayerProfile:
+        profile, _ = await self.create_profile_or_get_existing(owner_id, GameCode.PUBG_MOBILE)
+        return await self.profile_repo.save_generic_profile_data(
+            profile,
+            game_player_id=game_player_id,
+            profile_image_file_id=profile_image_file_id,
+            rank=rank,
+            role=None,
+            server=None,
+            description=description,
+        )
+
     async def delete_owned_profile(self, owner_id: int, profile_id: uuid.UUID) -> bool:
         profile = await self.profile_repo.get_owned_profile(owner_id, profile_id)
         if profile is None:
@@ -92,3 +133,22 @@ class ProfileService:
         if profile is None:
             return None
         return await self.profile_repo.update_profile_fields(profile, **fields)
+
+    async def update_profile_fields_for_game(self, owner_id: int, game: GameCode, **fields) -> PlayerProfile | None:
+        profile = await self.profile_repo.get_by_owner_and_game(owner_id, game)
+        if profile is None:
+            return None
+        return await self.profile_repo.update_profile_fields(profile, **fields)
+
+    async def game_id_exists(
+        self,
+        *,
+        game: GameCode,
+        game_player_id: str,
+        exclude_owner_id: int | None = None,
+    ) -> bool:
+        return await self.profile_repo.game_id_exists(
+            game=game,
+            game_player_id=game_player_id,
+            exclude_owner_id=exclude_owner_id,
+        )
