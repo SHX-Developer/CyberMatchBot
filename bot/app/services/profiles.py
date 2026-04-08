@@ -108,6 +108,9 @@ class ProfileService:
         await self.profile_repo.delete_profile(profile)
         return True
 
+    async def get_owned_profile(self, owner_id: int, profile_id: uuid.UUID) -> PlayerProfile | None:
+        return await self.profile_repo.get_owned_profile(owner_id, profile_id)
+
     async def reset_owned_profile(self, owner_id: int, profile_id: uuid.UUID) -> bool:
         profile = await self.profile_repo.get_owned_profile(owner_id, profile_id)
         if profile is None:
@@ -124,6 +127,9 @@ class ProfileService:
 
     async def search_profiles(self, owner_id: int, game: GameCode) -> list[tuple[PlayerProfile, User]]:
         return await self.profile_repo.search_by_game(owner_id, game)
+
+    async def random_profile_for_moderation(self, game: GameCode) -> tuple[PlayerProfile, User] | None:
+        return await self.profile_repo.random_by_game(game)
 
     async def mlbb_id_exists(self, game_player_id: str, *, exclude_owner_id: int | None = None) -> bool:
         return await self.profile_repo.mlbb_id_exists(game_player_id, exclude_owner_id=exclude_owner_id)

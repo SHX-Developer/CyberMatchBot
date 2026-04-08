@@ -107,6 +107,26 @@ class ProfileRepository:
         )
         return await self.session.scalar(stmt)
 
+    async def random_by_game(self, game: GameCode) -> tuple[PlayerProfile, User] | None:
+        stmt = (
+            select(PlayerProfile, User)
+            .join(User, User.id == PlayerProfile.owner_id)
+            .where(
+                and_(
+                    PlayerProfile.game == game,
+                    PlayerProfile.game_player_id.is_not(None),
+                    PlayerProfile.profile_image_file_id.is_not(None),
+                    PlayerProfile.description.is_not(None),
+                )
+            )
+            .order_by(func.random())
+            .limit(1)
+        )
+        row = (await self.session.execute(stmt)).first()
+        if row is None:
+            return None
+        return row[0], row[1]
+
     async def delete_profile(self, profile: PlayerProfile) -> None:
         await self.session.delete(profile)
         await self.session.flush()

@@ -5,15 +5,18 @@ from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import StateFilter
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import (
     CB_ADMIN_PROFILE_APPROVE_PREFIX,
     CB_ADMIN_PROFILE_DELETE_PREFIX,
     CB_ADMIN_PROFILE_DELETE_REASON_PREFIX,
+    CB_ADMIN_PROFILE_REFRESH_PREFIX,
+    CB_ADMIN_PROFILE_HIDE_PREFIX,
     BTN_MY_PROFILES_TEXTS,
     CB_MY_PROFILES_BACK,
     CB_MY_PROFILES_CARD_BACK,
@@ -73,12 +76,27 @@ ASSETS_DIR = Path(__file__).resolve().parent.parent / 'assets'
 DASHBOARD_PHOTO_PATH = ASSETS_DIR / 'anketi.png'
 CREATE_GAMES_PHOTO_PATH = ASSETS_DIR / 'games.png'
 MLBB_CREATE_PHOTO_PATH = ASSETS_DIR / 'mobile_legends.png'
+MLBB_CREATE_EXAMPLE_IMAGE_FILE_ID = 'AgACAgIAAxkBAAILxmnWA65xAzMC1K5Vy9weS5Sh_ubRAAJDEmsbc-uxStx8E2uHcht7AQADAgADbQADOwQ'
+GENSHIN_CREATE_EXAMPLE_IMAGE_FILE_ID = 'AgACAgIAAxkBAAILxGnWA41Jvu2ohW6pj4OSys1J_zOKAAJCEmsbc-uxSpyTYOSqpMjgAQADAgADbQADOwQ'
+PUBG_CREATE_EXAMPLE_IMAGE_FILE_ID = 'AgACAgIAAxkBAAILyGnWA9WK22wFoo6fMkqUpAccbjy1AAJEEmsbc-uxSgSvLgRme-SFAQADAgADbQADOwQ'
 SUPPORTED_GAMES = (GameCode.MLBB, GameCode.GENSHIN_IMPACT, GameCode.PUBG_MOBILE)
-ADMIN_REVIEW_USER_ID = 284929331
+MODERATION_REVIEW_CHAT_ID = -5122358580
+# Для добавления новых модераторов дополняйте этот набор Telegram ID.
+MODERATOR_USER_IDS = {
+    284929331,
+    1340041796,
+    622781320,
+}
+MODERATION_SEARCH_COMMANDS: dict[str, GameCode] = {
+    'search_mlbb': GameCode.MLBB,
+    'search_gi': GameCode.GENSHIN_IMPACT,
+    'search_pubgm': GameCode.PUBG_MOBILE,
+}
 ADMIN_DELETE_REASONS = {
     'img': 'Картинка не из игры',
     '18p': '18+ контент',
     'spam': 'Спам или реклама',
+    'bd': 'Некорректные данные',
     'other': 'Другая причина',
 }
 GENSHIN_REGION_CODES = {'ASIA', 'EUROPE', 'AMERICA', 'TW_HK_MO'}
@@ -132,7 +150,18 @@ def _active_game_from_state(data: dict) -> GameCode:
 
 
 def _is_admin(user_id: int | None) -> bool:
-    return isinstance(user_id, int) and user_id == ADMIN_REVIEW_USER_ID
+    return isinstance(user_id, int) and user_id in MODERATOR_USER_IDS
+
+
+def _admin_game_from_code(raw: str | None) -> GameCode | None:
+    mapping = {
+        'm': GameCode.MLBB,
+        'g': GameCode.GENSHIN_IMPACT,
+        'p': GameCode.PUBG_MOBILE,
+    }
+    if raw is None:
+        return None
+    return mapping.get(raw)
 
 
 def _display_owner_name(owner) -> str:
@@ -166,8 +195,57 @@ def _display_owner_language(owner) -> str:
     return str(language)
 
 
-def _parse_admin_profile_payload(payload: str) -> tuple[UUID, int] | None:
-    raw_profile_id, raw_owner_id = payload.split(':', 1) if ':' in payload else ('', '')
+def _moderator_name(callback: CallbackQuery) -> str:
+    user = callback.from_user
+    if user is None:
+        return 'Неизвестный модератор'
+    if isinstance(user.full_name, str) and user.full_name.strip():
+        return user.full_name.strip()
+    username = getattr(user, 'username', None)
+    if isinstance(username, str) and username.strip():
+        return f'@{username.strip()}'
+    return str(getattr(user, 'id', 'Неизвестный модератор'))
+
+
+async def _send_moderation_group_log(callback: CallbackQuery, text: str) -> None:
+    if not isinstance(callback.message, Message):
+        return
+    try:
+        await callback.bot.send_message(
+            chat_id=callback.message.chat.id,
+            text=text,
+            parse_mode='HTML',
+        )
+    except Exception:
+        pass
+
+
+def _owner_moderation_line(owner, owner_id: int) -> str:
+    display_name = escape(_display_owner_name(owner))
+    display_username = escape(_display_owner_username(owner))
+    return (
+        f"👤 {display_name}\n"
+        f"🔗 {display_username}\n"
+        f"🆔 <code>{owner_id}</code>"
+    )
+
+
+def _recreate_profile_keyboard(game: GameCode):
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text='🔄 Создать заново',
+        callback_data=f'{CB_MY_PROFILES_CREATE_PICK_PREFIX}{game.value}',
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def _parse_admin_profile_payload(payload: str) -> tuple[UUID, int, GameCode | None] | None:
+    parts = payload.split(':', 2)
+    if len(parts) < 2:
+        return None
+    raw_profile_id, raw_owner_id = parts[0], parts[1]
+    raw_game_code = parts[2] if len(parts) == 3 else None
     try:
         profile_id = UUID(raw_profile_id)
         owner_id = int(raw_owner_id)
@@ -175,14 +253,15 @@ def _parse_admin_profile_payload(payload: str) -> tuple[UUID, int] | None:
         return None
     if owner_id <= 0:
         return None
-    return profile_id, owner_id
+    return profile_id, owner_id, _admin_game_from_code(raw_game_code)
 
 
-def _parse_admin_reason_payload(payload: str) -> tuple[str, UUID, int] | None:
-    parts = payload.split(':', 2)
-    if len(parts) != 3:
+def _parse_admin_reason_payload(payload: str) -> tuple[str, UUID, int, GameCode | None] | None:
+    parts = payload.split(':', 3)
+    if len(parts) < 3:
         return None
-    reason_code, raw_profile_id, raw_owner_id = parts
+    reason_code, raw_profile_id, raw_owner_id = parts[0], parts[1], parts[2]
+    raw_game_code = parts[3] if len(parts) == 4 else None
     if reason_code not in ADMIN_DELETE_REASONS:
         return None
     try:
@@ -192,7 +271,7 @@ def _parse_admin_reason_payload(payload: str) -> tuple[str, UUID, int] | None:
         return None
     if owner_id <= 0:
         return None
-    return reason_code, profile_id, owner_id
+    return reason_code, profile_id, owner_id, _admin_game_from_code(raw_game_code)
 
 
 def _admin_profile_caption(profile, owner, *, event_type: str) -> str:
@@ -233,7 +312,12 @@ def _admin_profile_caption(profile, owner, *, event_type: str) -> str:
             f"<b>📝 О себе:</b> {escape(_safe(profile.description or profile.about))}",
         ]
 
-    event_title = '🆕 Новая анкета на проверку' if event_type == 'created' else '♻️ Анкета изменена: повторная проверка'
+    event_titles = {
+        'created': '🆕 Новая анкета на проверку',
+        'updated': '♻️ Анкета изменена: повторная проверка',
+        'random': '🎲 Случайная анкета для проверки',
+    }
+    event_title = event_titles.get(event_type, event_titles['updated'])
     return (
         f"<b>{event_title}</b>\n\n"
         f"<b>👤 Пользователь:</b> {escape(_display_owner_name(owner))}\n"
@@ -254,11 +338,15 @@ async def _send_profile_to_admin_review(
 ) -> None:
     try:
         await source_message.bot.send_photo(
-            chat_id=ADMIN_REVIEW_USER_ID,
+            chat_id=MODERATION_REVIEW_CHAT_ID,
             photo=_photo_media(profile.profile_image_file_id),
             caption=_admin_profile_caption(profile, owner, event_type=event_type),
             parse_mode='HTML',
-            reply_markup=admin_profile_review_keyboard(profile_id=profile.id, owner_id=profile.owner_id),
+            reply_markup=admin_profile_review_keyboard(
+                profile_id=profile.id,
+                owner_id=profile.owner_id,
+                game=profile.game,
+            ),
         )
     except Exception:
         pass
@@ -291,6 +379,16 @@ def _game_title(game: GameCode) -> str:
     if game == GameCode.PUBG_MOBILE:
         return 'Pubg Mobile'
     return 'Неизвестная игра'
+
+
+def _create_example_image_file_id(game: GameCode) -> str:
+    if game == GameCode.MLBB:
+        return MLBB_CREATE_EXAMPLE_IMAGE_FILE_ID
+    if game == GameCode.GENSHIN_IMPACT:
+        return GENSHIN_CREATE_EXAMPLE_IMAGE_FILE_ID
+    if game == GameCode.PUBG_MOBILE:
+        return PUBG_CREATE_EXAMPLE_IMAGE_FILE_ID
+    return MY_PROFILES_CREATE_IMAGE_FILE_ID
 
 
 def _genshin_region_label(code: str | None) -> str:
@@ -529,6 +627,41 @@ async def _delete_prompt_by_ref(state: FSMContext, source_message: Message) -> N
     except TelegramBadRequest:
         pass
     await state.update_data(my_profiles_prompt_chat_id=None, my_profiles_prompt_message_id=None)
+
+
+async def _delete_user_message(message: Message) -> None:
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
+
+
+async def _cleanup_input_messages(state: FSMContext, message: Message) -> None:
+    await _delete_prompt_by_ref(state, message)
+    await _delete_user_message(message)
+
+
+async def _send_error_notice(message: Message, text: str, *, state: FSMContext | None = None) -> Message:
+    notice = await message.answer(text, reply_markup=my_profiles_hide_notice_keyboard())
+    if state is not None:
+        await _remember_temp_notice(state, notice)
+    return notice
+
+
+async def _edit_create_progress_by_ref(
+    state: FSMContext,
+    source_message: Message,
+    *,
+    caption: str,
+    photo_file_id: str | None,
+) -> None:
+    await _edit_screen_by_ref(
+        state,
+        source_message,
+        caption=caption,
+        reply_markup=my_profiles_create_cancel_keyboard(),
+        photo_file_id=photo_file_id,
+    )
 
 
 def _photo_media(photo_file_id: str | None, photo_path: Path | None = None):
@@ -851,14 +984,13 @@ async def my_profiles_create_pick_handler(callback: CallbackQuery, state: FSMCon
     await _edit_screen(
         callback.message,
         caption=caption,
-        reply_markup=None,
-        photo_file_id=MY_PROFILES_CREATE_IMAGE_FILE_ID,
+        reply_markup=my_profiles_create_cancel_keyboard(),
+        photo_file_id=_create_example_image_file_id(game),
     )
     await _remember_message(state, callback.message)
     prompt = await callback.message.answer(
         "📸 <b>Отправьте скриншот вашей анкеты из игры.</b>\n\n"
         "Это поможет другим игрокам быстрее вас узнать.",
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -887,11 +1019,8 @@ async def my_profiles_create_cancel_handler(callback: CallbackQuery, state: FSMC
             )
             if is_incomplete:
                 await ProfileService(session).delete_owned_profile(user_id, profile.id)
-    await callback.answer()
-    try:
-        await callback.message.delete()
-    except TelegramBadRequest:
-        pass
+    await callback.answer('Заполнение отменено')
+    await _delete_prompt_by_ref(state, callback.message)
     await _delete_temp_notices(state, callback.message)
     await state.set_state(None)
     await state.update_data(create_mode=None)
@@ -913,26 +1042,21 @@ async def mlbb_create_photo_handler(
     await ensure_user_and_locale(message.from_user, session)
     photo_file_id = _message_image_file_id(message)
     if photo_file_id is None:
-        await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _delete_user_message(message)
+        await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
         return
     await state.update_data(mlbb_photo_file_id=photo_file_id)
     data = await state.get_data()
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_mlbb_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id,
     )
     await state.set_state(ProfilesSectionStates.mlbb_waiting_game_id)
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     prompt = await message.answer(
         "<b>🆔 Отправьте UID из игры (без Zone ID):</b>\n\nПример: <code>12345767890</code>",
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -943,7 +1067,8 @@ async def mlbb_create_photo_invalid_handler(message: Message, state: FSMContext,
         return
 
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_create_cancel_keyboard())
+    await _delete_user_message(message)
+    await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
 
 
 @router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_game_id))
@@ -955,39 +1080,34 @@ async def mlbb_create_game_id_handler(message: Message, state: FSMContext, sessi
     locale = locale or i18n.default_locale
     game_id_raw = (message.text or '').strip()
     if not is_valid_mlbb_player_id(game_id_raw):
-        await message.answer(
+        await _send_error_notice(
+            message,
             '❌ <b>Неверный формат UID.</b>\n\nОтправьте только UID без Zone ID.\nПример: <code>12345767890</code>',
-            reply_markup=my_profiles_create_cancel_keyboard(),
         )
         return
 
     if await ProfileService(session).mlbb_id_exists(game_id_raw, exclude_owner_id=user_id):
-        await message.answer(
+        await _send_error_notice(
+            message,
             '⚠️ Такой MLBB ID уже используется в другой анкете.\n\n'
             'Пожалуйста, введите другой ID.',
-            reply_markup=my_profiles_create_cancel_keyboard(),
         )
         return
 
     await state.update_data(mlbb_game_id=game_id_raw)
     data = await state.get_data()
     photo_file_id = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_mlbb_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.mlbb_waiting_server)
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     prompt = await message.answer(
         '🌍 <b>Выберите ваш регион в игре.</b>',
-        reply_markup=my_profiles_mlbb_server_keyboard(),
+        reply_markup=my_profiles_mlbb_server_keyboard(include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1012,11 +1132,10 @@ async def mlbb_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
         await state.update_data(mlbb_mythic_stars=None)
     data = await state.get_data()
     photo_file_id = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         callback.message,
         caption=_mlbb_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await callback.answer()
@@ -1025,7 +1144,6 @@ async def mlbb_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
         await state.set_state(ProfilesSectionStates.mlbb_waiting_mythic_stars)
         prompt = await callback.message.answer(
             '⭐ <b>Введите количество звезд (только число):</b>',
-            reply_markup=my_profiles_create_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
         return
@@ -1033,7 +1151,7 @@ async def mlbb_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
     await state.set_state(ProfilesSectionStates.mlbb_waiting_main_lane)
     prompt = await callback.message.answer(
         '🛡 <b>Выберите вашу основную линию:</b>',
-        reply_markup=my_profiles_mlbb_main_lane_keyboard(i18n, locale),
+        reply_markup=my_profiles_mlbb_main_lane_keyboard(i18n, locale, include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1043,7 +1161,7 @@ async def mlbb_create_rank_invalid_handler(message: Message, state: FSMContext, 
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_mlbb_rank_keyboard())
+    await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_mlbb_rank_keyboard(include_cancel=False))
 
 
 @router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_mythic_stars))
@@ -1059,32 +1177,27 @@ async def mlbb_create_mythic_stars_handler(
     locale = locale or i18n.default_locale
     raw = (message.text or '').strip()
     if not raw.isdigit():
-        await message.answer('Введите количество звезд цифрами.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Введите количество звезд цифрами.')
         return
     stars = int(raw)
     if stars <= 0 or stars > 999:
-        await message.answer('Количество звезд должно быть от 1 до 999.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Количество звезд должно быть от 1 до 999.')
         return
 
     await state.update_data(mlbb_mythic_stars=stars)
     data = await state.get_data()
     photo_file_id = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_mlbb_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.mlbb_waiting_main_lane)
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     prompt = await message.answer(
         '🛡 <b>Выберите вашу основную линию:</b>',
-        reply_markup=my_profiles_mlbb_main_lane_keyboard(i18n, locale),
+        reply_markup=my_profiles_mlbb_main_lane_keyboard(i18n, locale, include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1105,11 +1218,10 @@ async def mlbb_create_main_lane_handler(callback: CallbackQuery, state: FSMConte
     await state.update_data(mlbb_main_lane=lane.value, mlbb_extra_lanes=[])
     data = await state.get_data()
     photo_file_id = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         callback.message,
         caption=_mlbb_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.mlbb_waiting_extra_lanes)
@@ -1117,7 +1229,13 @@ async def mlbb_create_main_lane_handler(callback: CallbackQuery, state: FSMConte
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
         text='🎯 <b>Выберите дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
-        reply_markup=my_profiles_mlbb_extra_lanes_keyboard(i18n, locale, selected=set(), excluded_lanes={lane}),
+        reply_markup=my_profiles_mlbb_extra_lanes_keyboard(
+            i18n,
+            locale,
+            selected=set(),
+            excluded_lanes={lane},
+            include_cancel=False,
+        ),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1168,6 +1286,7 @@ async def mlbb_create_extra_lane_toggle_handler(
             locale,
             selected=selected,
             excluded_lanes={main_lane} if main_lane is not None else set(),
+            include_cancel=False,
         ),
     )
 
@@ -1202,11 +1321,10 @@ async def mlbb_create_extra_done_handler(
     await state.update_data(mlbb_extra_lanes=[lane.value for lane in extra_lanes])
     data = await state.get_data()
     photo_file_id = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         callback.message,
         caption=_mlbb_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.mlbb_waiting_about)
@@ -1215,7 +1333,6 @@ async def mlbb_create_extra_done_handler(
     prompt = await callback.message.answer(
         '📝 <b>Добавьте описание в анкету:</b>\n\n'
         'Расскажите кратко о стиле игры, роли и когда обычно играете.',
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1237,11 +1354,10 @@ async def mlbb_create_server_handler(callback: CallbackQuery, state: FSMContext,
     await state.update_data(mlbb_server=server)
     data = await state.get_data()
     photo_file_id = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         callback.message,
         caption=_mlbb_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.mlbb_waiting_rank)
@@ -1249,7 +1365,7 @@ async def mlbb_create_server_handler(callback: CallbackQuery, state: FSMContext,
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
         '🎖 <b>Выберите ваш ранг:</b>',
-        reply_markup=my_profiles_mlbb_rank_keyboard(),
+        reply_markup=my_profiles_mlbb_rank_keyboard(include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1259,7 +1375,7 @@ async def mlbb_create_server_invalid_handler(message: Message, state: FSMContext
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Выберите сервер кнопками ниже.', reply_markup=my_profiles_mlbb_server_keyboard())
+    await message.answer('Выберите сервер кнопками ниже.', reply_markup=my_profiles_mlbb_server_keyboard(include_cancel=False))
 
 
 @router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_about))
@@ -1270,27 +1386,20 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     about = (message.text or '').strip()
     if len(about) < DESCRIPTION_MIN_LENGTH:
-        await message.answer(
-            f'Описание должно быть минимум {DESCRIPTION_MIN_LENGTH} символов.',
-            reply_markup=my_profiles_create_cancel_keyboard(),
-        )
+        await _send_error_notice(message, f'Описание должно быть минимум {DESCRIPTION_MIN_LENGTH} символов.')
         return
     if len(about) > DESCRIPTION_MAX_LENGTH:
-        await message.answer(
-            f'Описание слишком длинное. Максимум {DESCRIPTION_MAX_LENGTH} символов.',
-            reply_markup=my_profiles_create_cancel_keyboard(),
-        )
+        await _send_error_notice(message, f'Описание слишком длинное. Максимум {DESCRIPTION_MAX_LENGTH} символов.')
         return
 
     data = await state.get_data()
     await state.update_data(mlbb_about_preview=about)
     data = await state.get_data()
     photo_preview = data.get('mlbb_photo_file_id') if isinstance(data.get('mlbb_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_mlbb_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_preview or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
 
@@ -1308,12 +1417,12 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         or not isinstance(server, str)
         or not isinstance(main_lane_raw, str)
     ):
-        await message.answer('Не удалось завершить анкету.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Не удалось завершить анкету.')
         return
 
     main_lane = _parse_lane(main_lane_raw)
     if main_lane is None:
-        await message.answer('Не удалось завершить анкету.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Не удалось завершить анкету.')
         return
 
     extra_lanes: list[MlbbLaneCode] = []
@@ -1322,7 +1431,7 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         if lane is not None and lane != main_lane:
             extra_lanes.append(lane)
     if not extra_lanes:
-        await message.answer('Выберите хотя бы одну дополнительную линию.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Выберите хотя бы одну дополнительную линию.')
         return
 
     mythic_stars_raw = data.get('mlbb_mythic_stars')
@@ -1351,11 +1460,7 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
             event_type=event_type,
         )
 
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
 
     await state.update_data(active_game=GameCode.MLBB.value, active_profile_id=str(profile.id))
     await _edit_screen_by_ref(
@@ -1377,26 +1482,21 @@ async def genshin_create_photo_handler(message: Message, state: FSMContext, sess
     await ensure_user_and_locale(message.from_user, session)
     photo_file_id = _message_image_file_id(message)
     if photo_file_id is None:
-        await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _delete_user_message(message)
+        await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
         return
     await state.update_data(genshin_photo_file_id=photo_file_id)
     data = await state.get_data()
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_genshin_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id,
     )
     await state.set_state(ProfilesSectionStates.genshin_waiting_uid)
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     prompt = await message.answer(
         '<b>🆔 Отправьте UID из игры:</b>\n\nПример: <code>712345678</code>',
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1406,7 +1506,8 @@ async def genshin_create_photo_invalid_handler(message: Message, state: FSMConte
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_create_cancel_keyboard())
+    await _delete_user_message(message)
+    await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
 
 
 @router.message(StateFilter(ProfilesSectionStates.genshin_waiting_uid))
@@ -1416,33 +1517,28 @@ async def genshin_create_uid_handler(message: Message, state: FSMContext, sessio
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     uid = (message.text or '').strip()
     if not _is_valid_uid(uid, min_len=8, max_len=12):
-        await message.answer(
+        await _send_error_notice(
+            message,
             '❌ <b>Неверный формат UID.</b>\n\nВведите только цифры.\nПример: <code>712345678</code>',
-            reply_markup=my_profiles_create_cancel_keyboard(),
         )
         return
     if await ProfileService(session).game_id_exists(game=GameCode.GENSHIN_IMPACT, game_player_id=uid, exclude_owner_id=user_id):
-        await message.answer('⚠️ Такой UID уже используется в другой анкете.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, '⚠️ Такой UID уже используется в другой анкете.')
         return
     await state.update_data(genshin_uid=uid)
     data = await state.get_data()
     photo_file_id = data.get('genshin_photo_file_id') if isinstance(data.get('genshin_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_genshin_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.genshin_waiting_region)
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     prompt = await message.answer(
         '🌍 <b>Выберите ваш регион:</b>',
-        reply_markup=my_profiles_genshin_region_keyboard(),
+        reply_markup=my_profiles_genshin_region_keyboard(include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1462,11 +1558,10 @@ async def genshin_create_region_handler(callback: CallbackQuery, state: FSMConte
     await state.update_data(genshin_region=code)
     data = await state.get_data()
     photo_file_id = data.get('genshin_photo_file_id') if isinstance(data.get('genshin_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         callback.message,
         caption=_genshin_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.genshin_waiting_adventure_level)
@@ -1474,7 +1569,6 @@ async def genshin_create_region_handler(callback: CallbackQuery, state: FSMConte
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
         '⭐ <b>Введите уровень приключения (1-60):</b>',
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1484,7 +1578,7 @@ async def genshin_create_region_invalid_handler(message: Message, state: FSMCont
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Выберите регион кнопками ниже.', reply_markup=my_profiles_genshin_region_keyboard())
+    await message.answer('Выберите регион кнопками ниже.', reply_markup=my_profiles_genshin_region_keyboard(include_cancel=False))
 
 
 @router.message(StateFilter(ProfilesSectionStates.genshin_waiting_adventure_level))
@@ -1494,31 +1588,25 @@ async def genshin_create_level_handler(message: Message, state: FSMContext, sess
     await ensure_user_and_locale(message.from_user, session)
     raw = (message.text or '').strip()
     if not raw.isdigit():
-        await message.answer('Введите уровень цифрами от 1 до 60.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Введите уровень цифрами от 1 до 60.')
         return
     level = int(raw)
     if not (1 <= level <= 60):
-        await message.answer('Уровень приключения должен быть от 1 до 60.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Уровень приключения должен быть от 1 до 60.')
         return
     await state.update_data(genshin_adventure_level=level)
     data = await state.get_data()
     photo_file_id = data.get('genshin_photo_file_id') if isinstance(data.get('genshin_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_genshin_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.genshin_waiting_about)
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     prompt = await message.answer(
         '📝 <b>Добавьте описание в анкету:</b>',
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1530,25 +1618,18 @@ async def genshin_create_about_handler(message: Message, state: FSMContext, sess
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     about = (message.text or '').strip()
     if len(about) < DESCRIPTION_MIN_LENGTH:
-        await message.answer(
-            f'Описание должно быть минимум {DESCRIPTION_MIN_LENGTH} символов.',
-            reply_markup=my_profiles_create_cancel_keyboard(),
-        )
+        await _send_error_notice(message, f'Описание должно быть минимум {DESCRIPTION_MIN_LENGTH} символов.')
         return
     if len(about) > DESCRIPTION_MAX_LENGTH:
-        await message.answer(
-            f'Описание слишком длинное. Максимум {DESCRIPTION_MAX_LENGTH} символов.',
-            reply_markup=my_profiles_create_cancel_keyboard(),
-        )
+        await _send_error_notice(message, f'Описание слишком длинное. Максимум {DESCRIPTION_MAX_LENGTH} символов.')
         return
     await state.update_data(genshin_about_preview=about)
     data = await state.get_data()
     photo_preview = data.get('genshin_photo_file_id') if isinstance(data.get('genshin_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_genshin_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_preview or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     photo_file_id = data.get('genshin_photo_file_id')
@@ -1556,7 +1637,7 @@ async def genshin_create_about_handler(message: Message, state: FSMContext, sess
     region = data.get('genshin_region')
     level = _adventure_level_value(data.get('genshin_adventure_level'))
     if not isinstance(photo_file_id, str) or not isinstance(uid, str) or not isinstance(region, str) or level is None:
-        await message.answer('Не удалось завершить анкету.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Не удалось завершить анкету.')
         return
     profile = await ProfileService(session).save_genshin_profile(
         owner_id=user_id,
@@ -1576,11 +1657,7 @@ async def genshin_create_about_handler(message: Message, state: FSMContext, sess
             owner=owner,
             event_type=event_type,
         )
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     await state.update_data(active_game=GameCode.GENSHIN_IMPACT.value, active_profile_id=str(profile.id))
     await _edit_screen_by_ref(
         state,
@@ -1601,26 +1678,21 @@ async def pubg_create_photo_handler(message: Message, state: FSMContext, session
     await ensure_user_and_locale(message.from_user, session)
     photo_file_id = _message_image_file_id(message)
     if photo_file_id is None:
-        await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _delete_user_message(message)
+        await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
         return
     await state.update_data(pubg_photo_file_id=photo_file_id)
     data = await state.get_data()
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_pubg_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id,
     )
     await state.set_state(ProfilesSectionStates.pubg_waiting_uid)
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     prompt = await message.answer(
         '<b>🆔 Отправьте UID из игры:</b>\n\nПример: <code>51234567890</code>',
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1630,7 +1702,8 @@ async def pubg_create_photo_invalid_handler(message: Message, state: FSMContext,
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_create_cancel_keyboard())
+    await _delete_user_message(message)
+    await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
 
 
 @router.message(StateFilter(ProfilesSectionStates.pubg_waiting_uid))
@@ -1640,33 +1713,28 @@ async def pubg_create_uid_handler(message: Message, state: FSMContext, session: 
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     uid = (message.text or '').strip()
     if not _is_valid_uid(uid, min_len=8, max_len=20):
-        await message.answer(
+        await _send_error_notice(
+            message,
             '❌ <b>Неверный формат UID.</b>\n\nВведите только цифры.',
-            reply_markup=my_profiles_create_cancel_keyboard(),
         )
         return
     if await ProfileService(session).game_id_exists(game=GameCode.PUBG_MOBILE, game_player_id=uid, exclude_owner_id=user_id):
-        await message.answer('⚠️ Такой UID уже используется в другой анкете.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, '⚠️ Такой UID уже используется в другой анкете.')
         return
     await state.update_data(pubg_uid=uid)
     data = await state.get_data()
     photo_file_id = data.get('pubg_photo_file_id') if isinstance(data.get('pubg_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_pubg_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.pubg_waiting_rank)
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     prompt = await message.answer(
         '🎖 <b>Выберите ваш ранг:</b>',
-        reply_markup=my_profiles_pubg_rank_keyboard(),
+        reply_markup=my_profiles_pubg_rank_keyboard(include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1686,11 +1754,10 @@ async def pubg_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
     await state.update_data(pubg_rank=rank)
     data = await state.get_data()
     photo_file_id = data.get('pubg_photo_file_id') if isinstance(data.get('pubg_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         callback.message,
         caption=_pubg_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_file_id or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     await state.set_state(ProfilesSectionStates.pubg_waiting_about)
@@ -1698,7 +1765,6 @@ async def pubg_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
         '📝 <b>Добавьте описание в анкету:</b>',
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1708,7 +1774,7 @@ async def pubg_create_rank_invalid_handler(message: Message, state: FSMContext, 
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_pubg_rank_keyboard())
+    await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_pubg_rank_keyboard(include_cancel=False))
 
 
 @router.message(StateFilter(ProfilesSectionStates.pubg_waiting_about))
@@ -1718,32 +1784,25 @@ async def pubg_create_about_handler(message: Message, state: FSMContext, session
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     about = (message.text or '').strip()
     if len(about) < DESCRIPTION_MIN_LENGTH:
-        await message.answer(
-            f'Описание должно быть минимум {DESCRIPTION_MIN_LENGTH} символов.',
-            reply_markup=my_profiles_create_cancel_keyboard(),
-        )
+        await _send_error_notice(message, f'Описание должно быть минимум {DESCRIPTION_MIN_LENGTH} символов.')
         return
     if len(about) > DESCRIPTION_MAX_LENGTH:
-        await message.answer(
-            f'Описание слишком длинное. Максимум {DESCRIPTION_MAX_LENGTH} символов.',
-            reply_markup=my_profiles_create_cancel_keyboard(),
-        )
+        await _send_error_notice(message, f'Описание слишком длинное. Максимум {DESCRIPTION_MAX_LENGTH} символов.')
         return
     await state.update_data(pubg_about_preview=about)
     data = await state.get_data()
     photo_preview = data.get('pubg_photo_file_id') if isinstance(data.get('pubg_photo_file_id'), str) else None
-    await _edit_screen_by_ref(
+    await _edit_create_progress_by_ref(
         state,
         message,
         caption=_pubg_progress_caption(data),
-        reply_markup=None,
         photo_file_id=photo_preview or MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
     photo_file_id = data.get('pubg_photo_file_id')
     uid = data.get('pubg_uid')
     rank = data.get('pubg_rank')
     if not isinstance(photo_file_id, str) or not isinstance(uid, str) or not isinstance(rank, str):
-        await message.answer('Не удалось завершить анкету.', reply_markup=my_profiles_create_cancel_keyboard())
+        await _send_error_notice(message, 'Не удалось завершить анкету.')
         return
     profile = await ProfileService(session).save_pubg_profile(
         owner_id=user_id,
@@ -1762,11 +1821,7 @@ async def pubg_create_about_handler(message: Message, state: FSMContext, session
             owner=owner,
             event_type=event_type,
         )
-    await _delete_prompt_by_ref(state, message)
-    try:
-        await message.delete()
-    except TelegramBadRequest:
-        pass
+    await _cleanup_input_messages(state, message)
     await state.update_data(active_game=GameCode.PUBG_MOBILE.value, active_profile_id=str(profile.id))
     await _edit_screen_by_ref(
         state,
@@ -1856,15 +1911,14 @@ async def my_profiles_refill_handler(callback: CallbackQuery, state: FSMContext,
     await _edit_screen(
         callback.message,
         caption=caption,
-        reply_markup=None,
-        photo_file_id=MY_PROFILES_CREATE_IMAGE_FILE_ID,
+        reply_markup=my_profiles_create_cancel_keyboard(),
+        photo_file_id=_create_example_image_file_id(active_game),
     )
     await _remember_message(state, callback.message)
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
         "📸 <b>Отправьте скриншот вашей анкеты из игры.</b>\n\n"
         "Это поможет другим игрокам быстрее вас узнать.",
-        reply_markup=my_profiles_create_cancel_keyboard(),
     )
     await _remember_prompt_message(state, prompt)
 
@@ -2060,7 +2114,7 @@ async def my_profiles_edit_photo_handler(message: Message, state: FSMContext, se
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     photo_file_id = _message_image_file_id(message)
     if photo_file_id is None:
-        notice = await message.answer('Пожалуйста, отправьте изображение.')
+        notice = await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_hide_notice_keyboard())
         await _remember_temp_notice(state, notice)
         return
     data = await state.get_data()
@@ -2071,7 +2125,7 @@ async def my_profiles_edit_photo_handler(message: Message, state: FSMContext, se
         profile_image_file_id=photo_file_id,
     )
     if profile is None:
-        await message.answer('Анкета не найдена.')
+        await message.answer('Анкета не найдена.', reply_markup=my_profiles_hide_notice_keyboard())
         return
 
     await _delete_prompt_by_ref(state, message)
@@ -2084,7 +2138,7 @@ async def my_profiles_edit_photo_handler(message: Message, state: FSMContext, se
 
 @router.message(StateFilter(ProfilesSectionStates.edit_waiting_photo))
 async def my_profiles_edit_photo_invalid_handler(message: Message, state: FSMContext) -> None:
-    notice = await message.answer('Пожалуйста, отправьте изображение.')
+    notice = await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_hide_notice_keyboard())
     await _remember_temp_notice(state, notice)
 
 
@@ -2108,7 +2162,8 @@ async def my_profiles_edit_id_handler(message: Message, state: FSMContext, sessi
         sample = '51234567890'
     if not valid:
         notice = await message.answer(
-            f'❌ <b>Неверный формат UID.</b>\n\nОтправьте только цифры.\nПример: <code>{sample}</code>'
+            f'❌ <b>Неверный формат UID.</b>\n\nОтправьте только цифры.\nПример: <code>{sample}</code>',
+            reply_markup=my_profiles_hide_notice_keyboard(),
         )
         await _remember_temp_notice(state, notice)
         return
@@ -2117,7 +2172,10 @@ async def my_profiles_edit_id_handler(message: Message, state: FSMContext, sessi
         game_player_id=game_id_raw,
         exclude_owner_id=user_id,
     ):
-        notice = await message.answer('⚠️ Такой UID уже используется.\nВведите другой UID.')
+        notice = await message.answer(
+            '⚠️ Такой UID уже используется.\nВведите другой UID.',
+            reply_markup=my_profiles_hide_notice_keyboard(),
+        )
         await _remember_temp_notice(state, notice)
         return
 
@@ -2127,7 +2185,7 @@ async def my_profiles_edit_id_handler(message: Message, state: FSMContext, sessi
         game_player_id=game_id_raw,
     )
     if profile is None:
-        await message.answer('Анкета не найдена.')
+        await message.answer('Анкета не найдена.', reply_markup=my_profiles_hide_notice_keyboard())
         return
 
     await _delete_prompt_by_ref(state, message)
@@ -2202,7 +2260,7 @@ async def my_profiles_edit_rank_handler(callback: CallbackQuery, state: FSMConte
 
 @router.message(StateFilter(ProfilesSectionStates.edit_waiting_rank))
 async def my_profiles_edit_rank_invalid_handler(message: Message, state: FSMContext) -> None:
-    notice = await message.answer('Выберите ранг кнопками ниже.')
+    notice = await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_hide_notice_keyboard())
     await _remember_temp_notice(state, notice)
 
 
@@ -2214,12 +2272,15 @@ async def my_profiles_edit_mythic_stars_handler(message: Message, state: FSMCont
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     raw = (message.text or '').strip()
     if not raw.isdigit():
-        notice = await message.answer('Введите количество звезд цифрами.')
+        notice = await message.answer('Введите количество звезд цифрами.', reply_markup=my_profiles_hide_notice_keyboard())
         await _remember_temp_notice(state, notice)
         return
     stars = int(raw)
     if stars <= 0 or stars > 999:
-        notice = await message.answer('Количество звезд должно быть от 1 до 999.')
+        notice = await message.answer(
+            'Количество звезд должно быть от 1 до 999.',
+            reply_markup=my_profiles_hide_notice_keyboard(),
+        )
         await _remember_temp_notice(state, notice)
         return
 
@@ -2229,7 +2290,7 @@ async def my_profiles_edit_mythic_stars_handler(message: Message, state: FSMCont
         mythic_stars=stars,
     )
     if profile is None:
-        await message.answer('Анкета не найдена.')
+        await message.answer('Анкета не найдена.', reply_markup=my_profiles_hide_notice_keyboard())
         return
 
     await _delete_prompt_by_ref(state, message)
@@ -2359,17 +2420,20 @@ async def my_profiles_edit_genshin_level_handler(message: Message, state: FSMCon
     data = await state.get_data()
     active_game = _active_game_from_state(data)
     if active_game != GameCode.GENSHIN_IMPACT:
-        notice = await message.answer('Поле недоступно для этой анкеты.')
+        notice = await message.answer('Поле недоступно для этой анкеты.', reply_markup=my_profiles_hide_notice_keyboard())
         await _remember_temp_notice(state, notice)
         return
     raw = (message.text or '').strip()
     if not raw.isdigit():
-        notice = await message.answer('Введите уровень цифрами от 1 до 60.')
+        notice = await message.answer('Введите уровень цифрами от 1 до 60.', reply_markup=my_profiles_hide_notice_keyboard())
         await _remember_temp_notice(state, notice)
         return
     level = int(raw)
     if not (1 <= level <= 60):
-        notice = await message.answer('Уровень приключения должен быть от 1 до 60.')
+        notice = await message.answer(
+            'Уровень приключения должен быть от 1 до 60.',
+            reply_markup=my_profiles_hide_notice_keyboard(),
+        )
         await _remember_temp_notice(state, notice)
         return
     profile = await ProfileService(session).update_profile_fields_for_game(
@@ -2378,7 +2442,7 @@ async def my_profiles_edit_genshin_level_handler(message: Message, state: FSMCon
         rank=str(level),
     )
     if profile is None:
-        await message.answer('Анкета не найдена.')
+        await message.answer('Анкета не найдена.', reply_markup=my_profiles_hide_notice_keyboard())
         return
     await _delete_prompt_by_ref(state, message)
     try:
@@ -2456,9 +2520,15 @@ async def my_profiles_edit_server_invalid_handler(message: Message, state: FSMCo
     data = await state.get_data()
     active_game = _active_game_from_state(data)
     if active_game == GameCode.GENSHIN_IMPACT:
-        notice = await message.answer('Выберите регион кнопками ниже.', reply_markup=my_profiles_genshin_region_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL))
+        notice = await message.answer(
+            'Выберите регион кнопками ниже.',
+            reply_markup=my_profiles_genshin_region_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL),
+        )
     else:
-        notice = await message.answer('Выберите регион кнопками ниже.', reply_markup=my_profiles_mlbb_server_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL))
+        notice = await message.answer(
+            'Выберите регион кнопками ниже.',
+            reply_markup=my_profiles_mlbb_server_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL),
+        )
     await _remember_temp_notice(state, notice)
 
 
@@ -2472,11 +2542,17 @@ async def my_profiles_edit_about_handler(message: Message, state: FSMContext, se
     active_game = _active_game_from_state(data)
     about = (message.text or '').strip()
     if len(about) < DESCRIPTION_MIN_LENGTH:
-        notice = await message.answer(f'Описание должно быть минимум {DESCRIPTION_MIN_LENGTH} символов.')
+        notice = await message.answer(
+            f'Описание должно быть минимум {DESCRIPTION_MIN_LENGTH} символов.',
+            reply_markup=my_profiles_hide_notice_keyboard(),
+        )
         await _remember_temp_notice(state, notice)
         return
     if len(about) > DESCRIPTION_MAX_LENGTH:
-        notice = await message.answer(f'Описание слишком длинное. Максимум {DESCRIPTION_MAX_LENGTH} символов.')
+        notice = await message.answer(
+            f'Описание слишком длинное. Максимум {DESCRIPTION_MAX_LENGTH} символов.',
+            reply_markup=my_profiles_hide_notice_keyboard(),
+        )
         await _remember_temp_notice(state, notice)
         return
 
@@ -2487,7 +2563,7 @@ async def my_profiles_edit_about_handler(message: Message, state: FSMContext, se
         about=about,
     )
     if profile is None:
-        await message.answer('Анкета не найдена.')
+        await message.answer('Анкета не найдена.', reply_markup=my_profiles_hide_notice_keyboard())
         return
 
     await _delete_prompt_by_ref(state, message)
@@ -2561,14 +2637,106 @@ async def my_profiles_delete_confirm_handler(callback: CallbackQuery, state: FSM
     await _render_dashboard(message=callback.message, state=state, user_id=user_id, session=session, use_edit=True)
 
 
+def _moderation_command_name(raw_text: str | None) -> str | None:
+    if not isinstance(raw_text, str) or not raw_text.strip():
+        return None
+    token = raw_text.strip().split(maxsplit=1)[0]
+    if not token.startswith('/'):
+        return None
+    return token[1:].split('@', 1)[0].lower()
+
+
+async def _render_moderation_profile_message(
+    *,
+    message: Message,
+    profile,
+    owner,
+    event_type: str,
+) -> None:
+    await message.answer_photo(
+        photo=_photo_media(profile.profile_image_file_id),
+        caption=_admin_profile_caption(profile, owner, event_type=event_type),
+        parse_mode='HTML',
+        reply_markup=admin_profile_review_keyboard(
+            profile_id=profile.id,
+            owner_id=profile.owner_id,
+            game=profile.game,
+        ),
+    )
+
+
+@router.message(Command(*MODERATION_SEARCH_COMMANDS.keys()))
+async def moderator_random_profile_search_handler(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        return
+    if message.chat.id != MODERATION_REVIEW_CHAT_ID:
+        return
+    if not _is_admin(message.from_user.id):
+        await message.answer('Нет доступа к модераторским командам.')
+        return
+
+    command_name = _moderation_command_name(message.text)
+    if command_name is None:
+        return
+    game = MODERATION_SEARCH_COMMANDS.get(command_name)
+    if game is None:
+        return
+
+    result = await ProfileService(session).random_profile_for_moderation(game)
+    if result is None:
+        await message.answer(f'Для игры {_game_title(game)} пока нет анкет для проверки.')
+        return
+
+    profile, owner = result
+    await _render_moderation_profile_message(
+        message=message,
+        profile=profile,
+        owner=owner,
+        event_type='random',
+    )
+
+
 @router.callback_query(F.data.startswith(CB_ADMIN_PROFILE_APPROVE_PREFIX))
-async def admin_profile_approve_handler(callback: CallbackQuery) -> None:
+async def admin_profile_approve_handler(callback: CallbackQuery, session: AsyncSession) -> None:
     if not _is_admin(callback.from_user.id if callback.from_user else None):
         await callback.answer('Нет доступа', show_alert=True)
         return
-    await callback.answer('Анкета одобрена')
     if not isinstance(callback.message, Message):
+        await callback.answer()
         return
+    payload = (callback.data or '').replace(CB_ADMIN_PROFILE_APPROVE_PREFIX, '', 1)
+    parsed = _parse_admin_profile_payload(payload)
+    if parsed is None:
+        await callback.answer('Некорректные данные анкеты', show_alert=True)
+        return
+    profile_id, owner_id, payload_game = parsed
+    profile_service = ProfileService(session)
+    profile = await profile_service.get_owned_profile(owner_id, profile_id)
+    if profile is None:
+        await callback.answer('Этой анкеты уже нет', show_alert=False)
+        await _send_moderation_group_log(
+            callback,
+            (
+                f"⚠️ Модератор <b>{escape(_moderator_name(callback))}</b> "
+                "попытался(ась) одобрить анкету, но такой анкеты уже нет."
+            ),
+        )
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
+        return
+
+    owner = await UserService(session).get_user(owner_id)
+    await callback.answer('Анкета одобрена')
+    await _send_moderation_group_log(
+        callback,
+        (
+            f"✅ Модератор <b>{escape(_moderator_name(callback))}</b> одобрил(а) анкету "
+            f"({escape(_game_title(profile.game if profile is not None else (payload_game or GameCode.MLBB)))})\n"
+            f"{_owner_moderation_line(owner, owner_id)}"
+        ),
+    )
     try:
         await callback.message.delete()
     except TelegramBadRequest:
@@ -2576,7 +2744,7 @@ async def admin_profile_approve_handler(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith(CB_ADMIN_PROFILE_DELETE_PREFIX))
-async def admin_profile_delete_handler(callback: CallbackQuery) -> None:
+async def admin_profile_delete_handler(callback: CallbackQuery, session: AsyncSession) -> None:
     if not _is_admin(callback.from_user.id if callback.from_user else None):
         await callback.answer('Нет доступа', show_alert=True)
         return
@@ -2589,12 +2757,33 @@ async def admin_profile_delete_handler(callback: CallbackQuery) -> None:
     if target is None:
         await callback.answer('Некорректные данные анкеты', show_alert=True)
         return
-    profile_id, owner_id = target
+    profile_id, owner_id, payload_game = target
+    profile = await ProfileService(session).get_owned_profile(owner_id, profile_id)
+    game_for_keyboard = profile.game if profile is not None else (payload_game or GameCode.MLBB)
+
+    if profile is None:
+        await callback.answer('Этой анкеты уже нет', show_alert=False)
+        await _send_moderation_group_log(
+            callback,
+            (
+                f"⚠️ Модератор <b>{escape(_moderator_name(callback))}</b> "
+                "попытался(ась) удалить анкету, но такой анкеты уже нет."
+            ),
+        )
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
+        return
 
     await callback.answer()
     try:
         await callback.message.edit_reply_markup(
-            reply_markup=admin_profile_delete_reason_keyboard(profile_id=profile_id, owner_id=owner_id),
+            reply_markup=admin_profile_delete_reason_keyboard(
+                profile_id=profile_id,
+                owner_id=owner_id,
+                game=game_for_keyboard,
+            ),
         )
     except TelegramBadRequest as exc:
         if 'message is not modified' not in str(exc):
@@ -2615,12 +2804,38 @@ async def admin_profile_delete_reason_handler(callback: CallbackQuery, session: 
     if parsed is None:
         await callback.answer('Некорректная причина удаления', show_alert=True)
         return
-    reason_code, profile_id, owner_id = parsed
+    reason_code, profile_id, owner_id, payload_game = parsed
     reason_text = ADMIN_DELETE_REASONS[reason_code]
+    profile_service = ProfileService(session)
+    profile = await profile_service.get_owned_profile(owner_id, profile_id)
+    game_for_keyboard = profile.game if profile is not None else (payload_game or GameCode.MLBB)
 
-    deleted = await ProfileService(session).delete_owned_profile(owner_id, profile_id)
+    if profile is None:
+        await callback.answer('Этой анкеты уже нет', show_alert=False)
+        await _send_moderation_group_log(
+            callback,
+            (
+                f"⚠️ Модератор <b>{escape(_moderator_name(callback))}</b> "
+                "подтвердил(а) удаление, но такой анкеты уже нет."
+            ),
+        )
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
+        return
+
+    owner = await UserService(session).get_user(owner_id)
+    deleted = await profile_service.delete_owned_profile(owner_id, profile_id)
     if not deleted:
-        await callback.answer('Анкета уже удалена или не найдена', show_alert=True)
+        await callback.answer('Этой анкеты уже нет', show_alert=False)
+        await _send_moderation_group_log(
+            callback,
+            (
+                f"⚠️ Модератор <b>{escape(_moderator_name(callback))}</b> "
+                "подтвердил(а) удаление, но такой анкеты уже нет."
+            ),
+        )
         try:
             await callback.message.delete()
         except TelegramBadRequest:
@@ -2628,18 +2843,101 @@ async def admin_profile_delete_reason_handler(callback: CallbackQuery, session: 
         return
 
     await callback.answer('Анкета удалена')
+    await _send_moderation_group_log(
+        callback,
+        (
+            f"❌ Модератор <b>{escape(_moderator_name(callback))}</b> "
+            f"удалил(а) анкету ({escape(_game_title(profile.game))}) по причине: "
+            f"<b>{escape(reason_text)}</b>\n"
+            f"{_owner_moderation_line(owner, owner_id)}"
+        ),
+    )
     try:
         await callback.bot.send_message(
             chat_id=owner_id,
             text=(
-                "❌ <b>Ваша анкета удалена модератором.</b>\n\n"
-                f"<b>Причина:</b> {escape(reason_text)}\n\n"
-                "Вы можете исправить анкету и создать её заново."
+                "🚫 <b>Анкета удалена модератором</b>\n\n"
+                f"🎮 <b>Игра:</b> {escape(_game_title(profile.game))}\n"
+                f"📌 <b>Причина:</b> {escape(reason_text)}\n\n"
+                "🛠 Исправьте данные и создайте анкету заново."
             ),
             parse_mode='HTML',
+            reply_markup=_recreate_profile_keyboard(profile.game),
         )
     except Exception:
         pass
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data.startswith(CB_ADMIN_PROFILE_REFRESH_PREFIX))
+async def admin_profile_refresh_handler(callback: CallbackQuery, session: AsyncSession) -> None:
+    if not _is_admin(callback.from_user.id if callback.from_user else None):
+        await callback.answer('Нет доступа', show_alert=True)
+        return
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+
+    payload = (callback.data or '').replace(CB_ADMIN_PROFILE_REFRESH_PREFIX, '', 1)
+    parsed = _parse_admin_profile_payload(payload)
+    if parsed is None:
+        await callback.answer('Некорректные данные анкеты', show_alert=True)
+        return
+    profile_id, owner_id, payload_game = parsed
+    profile_service = ProfileService(session)
+    profile = await profile_service.get_owned_profile(owner_id, profile_id)
+    if profile is None and payload_game is not None:
+        profile = await profile_service.get_profile_for_game(owner_id, payload_game)
+    game_for_keyboard = profile.game if profile is not None else (payload_game or GameCode.MLBB)
+    if profile is None:
+        await callback.answer('Этой анкеты нет', show_alert=True)
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
+        return
+
+    owner = await UserService(session).get_user(owner_id)
+    media = InputMediaPhoto(
+        media=_photo_media(profile.profile_image_file_id),
+        caption=_admin_profile_caption(profile, owner, event_type='updated'),
+        parse_mode='HTML',
+    )
+    try:
+        await callback.message.edit_media(
+            media=media,
+            reply_markup=admin_profile_review_keyboard(
+                profile_id=profile.id,
+                owner_id=profile.owner_id,
+                game=profile.game,
+            ),
+        )
+    except TelegramBadRequest as exc:
+        if 'message is not modified' in str(exc):
+            await callback.message.edit_reply_markup(
+                reply_markup=admin_profile_review_keyboard(
+                    profile_id=profile.id,
+                    owner_id=profile.owner_id,
+                    game=profile.game,
+                ),
+            )
+        else:
+            raise
+    await callback.answer('Анкета обновлена')
+
+
+@router.callback_query(F.data.startswith(CB_ADMIN_PROFILE_HIDE_PREFIX))
+async def admin_profile_hide_handler(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id if callback.from_user else None):
+        await callback.answer('Нет доступа', show_alert=True)
+        return
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    await callback.answer()
     try:
         await callback.message.delete()
     except TelegramBadRequest:

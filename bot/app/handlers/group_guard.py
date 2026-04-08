@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 _CLEANED_GROUP_CHATS: set[int] = set()
 
 
-@router.message(F.chat.type.in_({'group', 'supergroup'}), F.text)
+@router.message(F.chat.type.in_({'group', 'supergroup'}), F.text, ~F.text.startswith('/'))
 async def group_text_guard(message: Message) -> None:
     chat_id = message.chat.id
     logger.info('Group text message received: chat_id=%s', chat_id)

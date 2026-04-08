@@ -1,3 +1,4 @@
+from app.handlers.admin import router as admin_router
 from app.handlers.chats import router as chats_router
 from aiogram import Dispatcher
 
@@ -14,6 +15,7 @@ from app.handlers.start import router as start_router
 def setup_routers(dp: Dispatcher) -> None:
     dp.include_router(group_guard_router)
     dp.include_router(start_router)
+    dp.include_router(admin_router)
     dp.include_router(image_receiver_router)
     dp.include_router(profile_router)
     dp.include_router(profiles_router)

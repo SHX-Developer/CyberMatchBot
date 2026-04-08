@@ -4,9 +4,14 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.constants import (
+    CB_ADMIN_PANEL_BACK,
+    CB_ADMIN_PANEL_HIDE,
+    CB_ADMIN_PANEL_REFRESH,
+    CB_ADMIN_PANEL_STATS,
     CB_ADMIN_PROFILE_APPROVE_PREFIX,
     CB_ADMIN_PROFILE_DELETE_PREFIX,
     CB_ADMIN_PROFILE_DELETE_REASON_PREFIX,
+    CB_ADMIN_PROFILE_HIDE_PREFIX,
     CB_MY_PROFILES_BACK,
     CB_MY_PROFILES_CARD_BACK,
     CB_MY_PROFILES_CREATE_CANCEL,
@@ -104,6 +109,15 @@ def _game_title(game: GameCode) -> str:
     if game == GameCode.PUBG_MOBILE:
         return 'Pubg Mobile'
     return 'Неизвестная игра'
+
+
+def _admin_game_code(game: GameCode) -> str:
+    mapping = {
+        GameCode.MLBB: 'm',
+        GameCode.GENSHIN_IMPACT: 'g',
+        GameCode.PUBG_MOBILE: 'p',
+    }
+    return mapping.get(game, 'm')
 
 
 def language_keyboard() -> InlineKeyboardMarkup:
@@ -258,7 +272,8 @@ def profile_actions_keyboard(i18n: LocalizationManager, locale: str) -> InlineKe
     builder.button(text=i18n.t(locale, 'action.notifications'), callback_data=CB_PROFILE_NOTIFICATIONS)
     builder.button(text=i18n.t(locale, 'action.language.short'), callback_data=CB_PROFILE_LANGUAGE)
     builder.button(text=i18n.t(locale, 'action.statistics'), callback_data=CB_PROFILE_STATS)
-    builder.adjust(1, 2, 1)
+    builder.button(text=i18n.t(locale, 'action.activity.short'), callback_data=CB_ACTIVITY_OPEN)
+    builder.adjust(1, 2, 2)
     return builder.as_markup()
 
 
@@ -385,26 +400,45 @@ def my_profiles_edit_cancel_keyboard() -> InlineKeyboardMarkup:
 
 def my_profiles_hide_notice_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='⬅ Скрыть сообщение', callback_data=CB_MY_PROFILES_HIDE_NOTICE)
+    builder.button(text='💤 Скрыть сообщение', callback_data=CB_MY_PROFILES_HIDE_NOTICE)
     builder.adjust(1)
     return builder.as_markup()
 
 
-def admin_profile_review_keyboard(*, profile_id: uuid.UUID, owner_id: int) -> InlineKeyboardMarkup:
-    payload = f'{profile_id}:{owner_id}'
+def admin_panel_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text='📊 Статистика бота', callback_data=CB_ADMIN_PANEL_STATS)
+    builder.button(text='💤 Скрыть', callback_data=CB_ADMIN_PANEL_HIDE)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def admin_stats_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text='🔄 Обновить', callback_data=CB_ADMIN_PANEL_REFRESH)
+    builder.button(text='⬅ Назад', callback_data=CB_ADMIN_PANEL_BACK)
+    builder.button(text='💤 Скрыть', callback_data=CB_ADMIN_PANEL_HIDE)
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def admin_profile_review_keyboard(*, profile_id: uuid.UUID, owner_id: int, game: GameCode) -> InlineKeyboardMarkup:
+    payload = f'{profile_id}:{owner_id}:{_admin_game_code(game)}'
     builder = InlineKeyboardBuilder()
     builder.button(text='✅ Одобрить', callback_data=f'{CB_ADMIN_PROFILE_APPROVE_PREFIX}{payload}')
-    builder.button(text='🗑 Удалить анкету', callback_data=f'{CB_ADMIN_PROFILE_DELETE_PREFIX}{payload}')
-    builder.adjust(1)
+    builder.button(text='❌ Удалить', callback_data=f'{CB_ADMIN_PROFILE_DELETE_PREFIX}{payload}')
+    builder.button(text='💤 Скрыть анкету', callback_data=f'{CB_ADMIN_PROFILE_HIDE_PREFIX}{payload}')
+    builder.adjust(2, 1)
     return builder.as_markup()
 
 
-def admin_profile_delete_reason_keyboard(*, profile_id: uuid.UUID, owner_id: int) -> InlineKeyboardMarkup:
-    payload = f'{profile_id}:{owner_id}'
+def admin_profile_delete_reason_keyboard(*, profile_id: uuid.UUID, owner_id: int, game: GameCode) -> InlineKeyboardMarkup:
+    payload = f'{profile_id}:{owner_id}:{_admin_game_code(game)}'
     reasons = (
         ('img', '🖼 Картинка не из игры'),
         ('18p', '🔞 18+ контент'),
         ('spam', '🚫 Спам / реклама'),
+        ('bd', '📉 Некорректные данные'),
         ('other', '⚠️ Другая причина'),
     )
     builder = InlineKeyboardBuilder()
@@ -413,7 +447,8 @@ def admin_profile_delete_reason_keyboard(*, profile_id: uuid.UUID, owner_id: int
             text=title,
             callback_data=f'{CB_ADMIN_PROFILE_DELETE_REASON_PREFIX}{code}:{payload}',
         )
-    builder.adjust(1)
+    builder.button(text='💤 Скрыть анкету', callback_data=f'{CB_ADMIN_PROFILE_HIDE_PREFIX}{payload}')
+    builder.adjust(1, 1, 1, 1, 1, 1)
     return builder.as_markup()
 
 
@@ -422,6 +457,7 @@ def my_profiles_mlbb_main_lane_keyboard(
     locale: str,
     *,
     cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL,
+    include_cancel: bool = True,
     excluded_lanes: set[MlbbLaneCode] | None = None,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -439,7 +475,8 @@ def my_profiles_mlbb_main_lane_keyboard(
             text=i18n.t(locale, f'mlbb.lane.{lane.value}'),
             callback_data=f'{CB_MY_PROFILES_MLBB_MAIN_PREFIX}{lane.value}',
         )
-    builder.button(text='❌ Отмена', callback_data=cancel_callback)
+    if include_cancel:
+        builder.button(text='❌ Отмена', callback_data=cancel_callback)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -450,6 +487,7 @@ def my_profiles_mlbb_extra_lanes_keyboard(
     *,
     selected: set[MlbbLaneCode],
     cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL,
+    include_cancel: bool = True,
     excluded_lanes: set[MlbbLaneCode] | None = None,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -467,33 +505,50 @@ def my_profiles_mlbb_extra_lanes_keyboard(
         builder.button(
             text=f"{prefix}{i18n.t(locale, f'mlbb.lane.{lane.value}')}",
             callback_data=f'{CB_MY_PROFILES_MLBB_EXTRA_PREFIX}{lane.value}',
-        )
+    )
     builder.button(text='✅ Готово', callback_data=CB_MY_PROFILES_MLBB_EXTRA_DONE)
-    builder.button(text='❌ Отмена', callback_data=cancel_callback)
+    if include_cancel:
+        builder.button(text='❌ Отмена', callback_data=cancel_callback)
     builder.adjust(1)
     return builder.as_markup()
 
 
-def my_profiles_mlbb_rank_keyboard(*, cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL) -> InlineKeyboardMarkup:
+def my_profiles_mlbb_rank_keyboard(
+    *,
+    cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL,
+    include_cancel: bool = True,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for rank in ('Мастер', 'Грандмастер', 'Эпический', 'Легендарный', 'Мифический'):
         builder.button(text=rank, callback_data=f'{CB_MY_PROFILES_MLBB_RANK_PREFIX}{rank}')
-    builder.button(text='❌ Отмена', callback_data=cancel_callback)
+    if include_cancel:
+        builder.button(text='❌ Отмена', callback_data=cancel_callback)
     builder.adjust(1)
     return builder.as_markup()
 
 
-def my_profiles_mlbb_server_keyboard(*, cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL) -> InlineKeyboardMarkup:
+def my_profiles_mlbb_server_keyboard(
+    *,
+    cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL,
+    include_cancel: bool = True,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for server in ('🇺🇿 UZ', '🇷🇺 RU', '🇪🇺 EU'):
         code = server.split(' ', 1)[1]
         builder.button(text=server, callback_data=f'{CB_MY_PROFILES_MLBB_SERVER_PREFIX}{code}')
-    builder.button(text='❌ Отмена', callback_data=cancel_callback)
-    builder.adjust(3, 1)
+    if include_cancel:
+        builder.button(text='❌ Отмена', callback_data=cancel_callback)
+        builder.adjust(3, 1)
+        return builder.as_markup()
+    builder.adjust(3)
     return builder.as_markup()
 
 
-def my_profiles_genshin_region_keyboard(*, cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL) -> InlineKeyboardMarkup:
+def my_profiles_genshin_region_keyboard(
+    *,
+    cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL,
+    include_cancel: bool = True,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for code, title in (
         ('ASIA', '🌏 Азия'),
@@ -502,16 +557,22 @@ def my_profiles_genshin_region_keyboard(*, cancel_callback: str = CB_MY_PROFILES
         ('TW_HK_MO', '🌐 TW, HK, MO'),
     ):
         builder.button(text=title, callback_data=f'{CB_MY_PROFILES_GENSHIN_REGION_PREFIX}{code}')
-    builder.button(text='❌ Отмена', callback_data=cancel_callback)
+    if include_cancel:
+        builder.button(text='❌ Отмена', callback_data=cancel_callback)
     builder.adjust(1)
     return builder.as_markup()
 
 
-def my_profiles_pubg_rank_keyboard(*, cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL) -> InlineKeyboardMarkup:
+def my_profiles_pubg_rank_keyboard(
+    *,
+    cancel_callback: str = CB_MY_PROFILES_CREATE_CANCEL,
+    include_cancel: bool = True,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for rank in PUBG_RANK_CHOICES:
         builder.button(text=rank, callback_data=f'{CB_MY_PROFILES_PUBG_RANK_PREFIX}{rank}')
-    builder.button(text='❌ Отмена', callback_data=cancel_callback)
+    if include_cancel:
+        builder.button(text='❌ Отмена', callback_data=cancel_callback)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -525,7 +586,11 @@ def search_need_profile_keyboard(i18n: LocalizationManager, locale: str) -> Inli
 
 def search_game_pick_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'search.button.game.mlbb'), callback_data=f'{CB_SEARCH_GAME_PICK_PREFIX}{GameCode.MLBB.value}')
+    for game in (GameCode.MLBB, GameCode.GENSHIN_IMPACT, GameCode.PUBG_MOBILE):
+        builder.button(
+            text=i18n.t(locale, f'search.button.game.{game.value}'),
+            callback_data=f'{CB_SEARCH_GAME_PICK_PREFIX}{game.value}',
+        )
     builder.adjust(1)
     return builder.as_markup()
 
@@ -624,7 +689,7 @@ def search_profile_notice_keyboard(
 def search_user_profiles_games_keyboard(*, i18n: LocalizationManager, locale: str, user_id: int, games: list[GameCode]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for game in games:
-        title = i18n.t(locale, 'search.button.game.mlbb') if game == GameCode.MLBB else f'🎮 {_game_title(game)}'
+        title = i18n.t(locale, f'search.button.game.{game.value}')
         builder.button(text=title, callback_data=f'{CB_SEARCH_USER_PROFILE_GAME_PREFIX}{user_id}:{game.value}')
     builder.button(text=i18n.t(locale, 'search.button.back_to_personal_profile'), callback_data=f'{CB_SEARCH_BACK_TO_PROFILE_PREFIX}{user_id}')
     builder.adjust(1)
@@ -638,6 +703,7 @@ def activity_open_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyb
     builder.button(text=i18n.t(locale, 'activity.button.my_likes'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}likes:1')
     builder.button(text=i18n.t(locale, 'activity.button.who_liked_me'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}liked_by:1')
     builder.button(text=i18n.t(locale, 'activity.button.friends'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}friends:1')
+    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -675,12 +741,13 @@ def activity_section_keyboard(
             callback_data=f'{CB_ACTIVITY_PAGE_PREFIX}{section}:{page + 1}',
         )
     builder.button(text=i18n.t(locale, 'activity.button.back_to_activity'), callback_data=CB_ACTIVITY_BACK)
+    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
     if has_previous and has_next:
-        builder.adjust(*(1 for _ in items), 2, 1)
+        builder.adjust(*(1 for _ in items), 2, 1, 1)
     elif has_previous or has_next:
-        builder.adjust(*(1 for _ in items), 1, 1)
+        builder.adjust(*(1 for _ in items), 1, 1, 1)
     else:
-        builder.adjust(*(1 for _ in items), 1)
+        builder.adjust(*(1 for _ in items), 1, 1)
     return builder.as_markup()
 
 

@@ -61,6 +61,29 @@ router = Router(name='search')
 
 DEFAULT_AVATAR_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'default_avatar.png'
 SEARCH_IMAGE_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'search.png'
+SUPPORTED_SEARCH_GAMES = (GameCode.MLBB, GameCode.GENSHIN_IMPACT, GameCode.PUBG_MOBILE)
+
+
+def _game_title(game: GameCode) -> str:
+    if game == GameCode.MLBB:
+        return 'Mobile Legends'
+    if game == GameCode.GENSHIN_IMPACT:
+        return 'Genshin Impact'
+    if game == GameCode.PUBG_MOBILE:
+        return 'Pubg Mobile'
+    return 'Неизвестная игра'
+
+
+def _genshin_region_label(code: str | None) -> str:
+    mapping = {
+        'ASIA': 'Азия',
+        'EUROPE': 'Европа',
+        'AMERICA': 'Америка',
+        'TW_HK_MO': 'TW, HK, MO',
+    }
+    if not code:
+        return 'Не указано'
+    return mapping.get(code, code)
 
 
 def _lane_title(raw: str | None) -> str:
@@ -118,13 +141,35 @@ def _public_game_id(raw_value: str | None) -> str:
 
 
 def _search_card_text(profile, user) -> str:
+    title = escape(_game_title(profile.game))
+    if profile.game == GameCode.MLBB:
+        return (
+            f"<b>🎮 {title}: анкета {escape(_full_name(user))}</b>\n\n"
+            f"<b>🆔 ID:</b> <code>{escape(_public_game_id(profile.game_player_id))}</code>\n"
+            f"<b>🌍 Регион:</b> {escape(profile.play_time or 'Не указано')}\n\n"
+            f"<b>🎖 Ранг:</b> {escape(_format_rank(profile.rank, profile.mythic_stars))}\n"
+            f"<b>🛡 Основная линия:</b> {escape(_lane_title(profile.main_lane.value if profile.main_lane else None))}\n"
+            f"<b>🎯 Доп. линии:</b> {escape(_extra_lanes_text(profile.extra_lanes))}\n\n"
+            f"<b>📝 О себе:</b> {escape(profile.description or 'Не указано')}"
+        )
+    if profile.game == GameCode.GENSHIN_IMPACT:
+        return (
+            f"<b>🎮 {title}: анкета {escape(_full_name(user))}</b>\n\n"
+            f"<b>🆔 UID:</b> <code>{escape(_public_game_id(profile.game_player_id))}</code>\n"
+            f"<b>🌍 Регион:</b> {escape(_genshin_region_label(profile.play_time))}\n"
+            f"<b>⭐ Уровень приключения:</b> {escape(profile.rank or 'Не указано')}\n\n"
+            f"<b>📝 О себе:</b> {escape(profile.description or 'Не указано')}"
+        )
+    if profile.game == GameCode.PUBG_MOBILE:
+        return (
+            f"<b>🎮 {title}: анкета {escape(_full_name(user))}</b>\n\n"
+            f"<b>🆔 UID:</b> <code>{escape(_public_game_id(profile.game_player_id))}</code>\n"
+            f"<b>🎖 Ранг:</b> {escape(profile.rank or 'Не указано')}\n\n"
+            f"<b>📝 О себе:</b> {escape(profile.description or 'Не указано')}"
+        )
     return (
-        f"<b>🎮 Игровая анкета {escape(_full_name(user))}</b>\n\n"
+        f"<b>🎮 {title}: анкета {escape(_full_name(user))}</b>\n\n"
         f"<b>🆔 ID:</b> <code>{escape(_public_game_id(profile.game_player_id))}</code>\n"
-        f"<b>🌍 Сервер:</b> {escape(profile.play_time or 'Не указано')}\n\n"
-        f"<b>🎖 Ранг:</b> {escape(_format_rank(profile.rank, profile.mythic_stars))}\n"
-        f"<b>🛡 Основная линия:</b> {escape(_lane_title(profile.main_lane.value if profile.main_lane else None))}\n"
-        f"<b>🎯 Доп. линии:</b> {escape(_extra_lanes_text(profile.extra_lanes))}\n\n"
         f"<b>📝 О себе:</b> {escape(profile.description or 'Не указано')}"
     )
 
@@ -163,7 +208,7 @@ def _game_from_raw(raw: str) -> GameCode | None:
         game = GameCode(raw)
     except ValueError:
         return None
-    if game != GameCode.MLBB:
+    if game not in SUPPORTED_SEARCH_GAMES:
         return None
     return game
 
@@ -298,13 +343,6 @@ async def find_teammate_entry(
         await message.answer(i18n.t(i18n.default_locale, 'language.select'))
         return
 
-    if not await ProfileService(session).has_any_profile(user_id):
-        await message.answer(
-            '⚠️ Сначала создайте анкету, чтобы искать тиммейтов.',
-            reply_markup=search_need_profile_keyboard(i18n, locale),
-        )
-        return
-
     await message.answer_photo(
         photo=SEARCH_GAME_PICK_IMAGE_FILE_ID,
         caption=(
@@ -369,6 +407,15 @@ async def search_game_pick(
     game = _game_from_raw(raw)
     if game is None:
         await callback.answer('Игра пока недоступна', show_alert=True)
+        return
+    if await ProfileService(session).get_profile_for_game(user_id, game) is None:
+        await callback.answer('Сначала привяжите анкету для этой игры', show_alert=True)
+        await _send_or_edit_profile_card(
+            message=callback.message,
+            caption=f"<b>🎮 Сначала привяжите анкету {escape(_game_title(game))}</b>",
+            reply_markup=my_profiles_create_game_keyboard(games=[game]),
+            photo_file_id=MY_PROFILES_CREATE_IMAGE_FILE_ID,
+        )
         return
     await callback.answer()
     await _show_next_profile(
@@ -570,14 +617,14 @@ async def search_like(
                     text += f"\nЮзернейм: @{other.username}"
                     builder = InlineKeyboardBuilder()
                     builder.button(text='💬 Перейти в ЛС', url=f'https://t.me/{other.username}')
-                    builder.button(text='⬅ Скрыть сообщение', callback_data=CB_SEARCH_HIDE_NOTICE)
+                    builder.button(text='💤 Скрыть сообщение', callback_data=CB_SEARCH_HIDE_NOTICE)
                     builder.adjust(1)
                     keyboard = builder.as_markup()
                 else:
                     text += '\nЮзернейм: не указан'
                     builder = InlineKeyboardBuilder()
                     builder.button(text='Написать в боте', callback_data=f'{CB_SEARCH_MESSAGE_PREFIX}{other.id}')
-                    builder.button(text='⬅ Скрыть сообщение', callback_data=CB_SEARCH_HIDE_NOTICE)
+                    builder.button(text='💤 Скрыть сообщение', callback_data=CB_SEARCH_HIDE_NOTICE)
                     builder.adjust(1)
                     keyboard = builder.as_markup()
                 await callback.bot.send_message(receiver, text, reply_markup=keyboard)

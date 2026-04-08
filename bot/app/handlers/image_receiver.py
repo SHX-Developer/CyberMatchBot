@@ -5,9 +5,10 @@ from aiogram.filters import StateFilter
 from aiogram.types import Message
 
 router = Router(name='image_receiver')
+OWNER_USER_ID = 284929331
 
 
-@router.message(StateFilter(None), F.photo)
+@router.message(StateFilter(None), F.photo, F.from_user.id == OWNER_USER_ID)
 async def image_file_id_handler(message: Message) -> None:
     if not message.photo:
         return

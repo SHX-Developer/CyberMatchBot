@@ -1,4 +1,6 @@
 from app.keyboards.inline import (
+    admin_panel_keyboard,
+    admin_stats_keyboard,
     admin_profile_delete_reason_keyboard,
     admin_profile_review_keyboard,
     create_profile_for_game_keyboard,
@@ -61,6 +63,8 @@ from app.keyboards.reply import (
 
 __all__ = (
     'language_keyboard',
+    'admin_panel_keyboard',
+    'admin_stats_keyboard',
     'admin_profile_review_keyboard',
     'admin_profile_delete_reason_keyboard',
     'main_menu_keyboard',
