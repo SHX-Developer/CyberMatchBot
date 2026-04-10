@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app.database import GameCode
 from app.models import UserMessage
 from app.services.messages import MessageService
@@ -48,3 +50,11 @@ class InteractionService:
 
     async def list_friends(self, user_id: int, *, limit: int = 50) -> list[dict[str, int | str | None]]:
         return await self.repo.list_friends(user_id, limit=limit)
+
+    async def unread_activity_counters(
+        self,
+        user_id: int,
+        *,
+        seen_at: dict[str, datetime | None],
+    ) -> dict[str, int]:
+        return await self.repo.unread_activity_counters(user_id, seen_at=seen_at)

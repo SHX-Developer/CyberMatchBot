@@ -16,6 +16,7 @@ class UserStats(TimestampMixin, Base):
     subscriptions_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     friends_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     profile_views_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    profile_visits_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     mutual_likes_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     user = relationship('User', back_populates='stats')

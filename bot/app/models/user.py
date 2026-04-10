@@ -18,6 +18,7 @@ class User(Base):
     notify_likes: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     notify_subscriptions: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     notify_messages: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
+    show_last_activity: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     language_code: Mapped[LanguageCode | None] = mapped_column(
         Enum(
             LanguageCode,
@@ -37,6 +38,16 @@ class User(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    activity_seen_subscriptions_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    activity_seen_subscribers_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    activity_seen_likes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    activity_seen_liked_by_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    activity_seen_friends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     profiles = relationship('PlayerProfile', back_populates='owner', cascade='all, delete-orphan')
     stats = relationship('UserStats', back_populates='user', uselist=False, cascade='all, delete-orphan')

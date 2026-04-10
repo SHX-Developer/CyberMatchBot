@@ -143,6 +143,8 @@ async def get_profile(user_id: int = Query(...), session: AsyncSession = Depends
         'followers_count': int(payload.get('followers_count', 0) or 0),
         'subscriptions_count': int(payload.get('subscriptions_count', 0) or 0),
         'friends_count': int(payload.get('friends_count', 0) or 0),
+        'profile_views_count': int(payload.get('profile_views_count', 0) or 0),
+        'profile_visits_count': int(payload.get('profile_visits_count', 0) or 0),
     }
 
 

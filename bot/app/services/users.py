@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +39,8 @@ class UserService:
         stats = await self.user_repo.get_stats(user_id)
         profiles_count = await self.profile_repo.count_by_owner(user_id)
         counters = await self.interaction_repo.profile_counters(user_id)
+        profile_views_count = int(getattr(stats, 'profile_views_count', 0) or 0) if stats is not None else 0
+        profile_visits_count = int(getattr(stats, 'profile_visits_count', 0) or 0) if stats is not None else 0
 
         return {
             'user': user,
@@ -46,6 +50,8 @@ class UserService:
             'followers_count': counters['followers_count'],
             'subscriptions_count': counters['subscriptions_count'],
             'friends_count': counters['friends_count'],
+            'profile_views_count': profile_views_count,
+            'profile_visits_count': profile_visits_count,
         }
 
     async def set_avatar_file_id(self, user_id: int, avatar_file_id: str | None) -> User | None:
@@ -84,3 +90,21 @@ class UserService:
         if field is None:
             return None
         return await self.user_repo.toggle_notification(user_id, field)
+
+    async def last_activity_visible(self, user_id: int) -> bool:
+        return await self.user_repo.last_activity_visible(user_id)
+
+    async def set_last_activity_visible(self, user_id: int, enabled: bool) -> bool | None:
+        return await self.user_repo.set_last_activity_visible(user_id, enabled)
+
+    async def activity_seen_map(self, user_id: int) -> dict[str, datetime | None]:
+        return await self.user_repo.activity_seen_map(user_id)
+
+    async def mark_activity_section_seen(self, user_id: int, section: str) -> None:
+        await self.user_repo.mark_activity_section_seen(user_id, section)
+
+    async def increment_profile_views_count(self, user_id: int) -> None:
+        await self.user_repo.increment_profile_views_count(user_id)
+
+    async def increment_profile_visits_count(self, user_id: int) -> None:
+        await self.user_repo.increment_profile_visits_count(user_id)

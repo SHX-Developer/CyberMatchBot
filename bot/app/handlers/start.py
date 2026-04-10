@@ -1,15 +1,15 @@
 import re
 
 from aiogram import F, Router
-from aiogram.filters import CommandStart, StateFilter
+from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import LanguageCode
-from app.handlers.context import ensure_user_and_locale
+from app.handlers.context import ensure_user_and_locale, main_menu_keyboard_with_counters
 from app.handlers.states import OnboardingStates
-from app.keyboards import language_keyboard, main_menu_keyboard
+from app.keyboards import language_keyboard
 from app.locales import LocalizationManager
 from app.constants import MAIN_MENU_IMAGE_FILE_ID
 from app.services import UserService
@@ -30,14 +30,9 @@ async def _sync_avatar_from_telegram(user_id: int, message: Message, user_servic
     await user_service.set_avatar_file_id(user_id, avatar_file_id)
 
 
-async def _prompt_nickname(message: Message) -> None:
+async def _prompt_nickname(message: Message, *, locale: str, i18n: LocalizationManager) -> None:
     await message.answer(
-        '🎯 <b>Создайте никнейм для личного профиля</b>\n\n'
-        '✅ <b>Требования:</b>\n'
-        '• только английские буквы\n'
-        '• минимум 4 символа\n'
-        '• сохраняется в нижнем регистре\n\n'
-        '💡 <b>Пример:</b> <code>cybermate</code>',
+        i18n.t(locale, 'onboarding.nickname.prompt'),
         parse_mode='HTML',
     )
 
@@ -47,12 +42,17 @@ async def _needs_nickname(user_service: UserService, user_id: int) -> bool:
     return user is None or not (user.full_name and user.full_name.strip())
 
 
-async def _send_main_menu(message: Message, locale: str, i18n: LocalizationManager) -> None:
+async def _send_main_menu(message: Message, user_id: int, locale: str, session: AsyncSession, i18n: LocalizationManager) -> None:
     await message.answer_photo(
         photo=MAIN_MENU_IMAGE_FILE_ID,
         caption=i18n.t(locale, 'start.welcome'),
         parse_mode='HTML',
-        reply_markup=main_menu_keyboard(i18n, locale),
+        reply_markup=await main_menu_keyboard_with_counters(
+            user_id=user_id,
+            locale=locale,
+            session=session,
+            i18n=i18n,
+        ),
     )
 
 
@@ -77,10 +77,23 @@ async def start_handler(
 
     if await _needs_nickname(user_service, user_id):
         await state.set_state(OnboardingStates.waiting_for_nickname)
-        await _prompt_nickname(message)
+        await _prompt_nickname(message, locale=locale, i18n=i18n)
         return
 
-    await _send_main_menu(message, locale, i18n)
+    await _send_main_menu(message, user_id, locale, session, i18n)
+
+
+@router.message(Command('help'))
+async def help_handler(
+    message: Message,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    if message.from_user is None:
+        return
+    _, locale = await ensure_user_and_locale(message.from_user, session)
+    locale = locale or i18n.default_locale
+    await message.answer(i18n.t(locale, 'help.commands'), parse_mode='HTML')
 
 
 @router.callback_query(F.data.startswith('lang:set:'))
@@ -107,9 +120,9 @@ async def set_language_handler(callback: CallbackQuery, state: FSMContext, sessi
         await state.clear()
         if await _needs_nickname(user_service, callback.from_user.id):
             await state.set_state(OnboardingStates.waiting_for_nickname)
-            await _prompt_nickname(callback.message)
+            await _prompt_nickname(callback.message, locale=locale, i18n=i18n)
             return
-        await _send_main_menu(callback.message, locale, i18n)
+        await _send_main_menu(callback.message, callback.from_user.id, locale, session, i18n)
 
 
 @router.message(StateFilter(OnboardingStates.waiting_for_nickname))
@@ -128,16 +141,14 @@ async def onboarding_nickname_handler(
 
     if not NICKNAME_PATTERN.fullmatch(raw):
         await message.answer(
-            '❌ <b>Неверный формат никнейма</b>\n\n'
-            'Используйте только английские буквы и минимум 4 символа.\n'
-            '💡 Пример: <code>cybermate</code>',
+            i18n.t(locale, 'onboarding.nickname.invalid'),
             parse_mode='HTML',
         )
         return
 
     user_service = UserService(session)
     if await user_service.nickname_exists(raw, exclude_user_id=user_id):
-        await message.answer('❌ Этот никнейм уже занят. Введите другой.')
+        await message.answer(i18n.t(locale, 'onboarding.nickname.taken'))
         return
 
     await user_service.set_full_name(user_id, raw)
@@ -147,7 +158,7 @@ async def onboarding_nickname_handler(
     except Exception:
         pass
     await message.answer(
-        f'✅ Никнейм <b>{raw}</b> сохранен.',
+        i18n.t(locale, 'onboarding.nickname.saved', nickname=raw),
         parse_mode='HTML',
     )
-    await _send_main_menu(message, locale, i18n)
+    await _send_main_menu(message, user_id, locale, session, i18n)

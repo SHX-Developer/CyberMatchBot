@@ -1,4 +1,6 @@
-from sqlalchemy import case, func, or_, select
+from datetime import datetime
+
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import LanguageCode
@@ -26,6 +28,7 @@ class UserRepository:
                 full_name=None,
                 first_name=first_name,
                 last_name=last_name,
+                last_seen_at=func.now(),
             )
             self.session.add(user)
             self.session.add(UserStats(user=user))
@@ -35,6 +38,7 @@ class UserRepository:
         user.username = username
         user.first_name = first_name
         user.last_name = last_name
+        user.last_seen_at = func.now()
         await self.session.flush()
         return user
 
@@ -99,3 +103,70 @@ class UserRepository:
         setattr(user, field, not current)
         await self.session.flush()
         return bool(getattr(user, field))
+
+    async def last_activity_visible(self, user_id: int) -> bool:
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return True
+        return bool(getattr(user, 'show_last_activity', True))
+
+    async def set_last_activity_visible(self, user_id: int, enabled: bool) -> bool | None:
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return None
+        user.show_last_activity = bool(enabled)
+        await self.session.flush()
+        return bool(user.show_last_activity)
+
+    async def activity_seen_map(self, user_id: int) -> dict[str, datetime | None]:
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return {
+                'subscriptions': None,
+                'subscribers': None,
+                'likes': None,
+                'liked_by': None,
+                'friends': None,
+            }
+        return {
+            'subscriptions': getattr(user, 'activity_seen_subscriptions_at', None),
+            'subscribers': getattr(user, 'activity_seen_subscribers_at', None),
+            'likes': getattr(user, 'activity_seen_likes_at', None),
+            'liked_by': getattr(user, 'activity_seen_liked_by_at', None),
+            'friends': getattr(user, 'activity_seen_friends_at', None),
+        }
+
+    async def mark_activity_section_seen(self, user_id: int, section: str) -> None:
+        mapping = {
+            'subscriptions': 'activity_seen_subscriptions_at',
+            'subscribers': 'activity_seen_subscribers_at',
+            'likes': 'activity_seen_likes_at',
+            'liked_by': 'activity_seen_liked_by_at',
+            'friends': 'activity_seen_friends_at',
+        }
+        field = mapping.get(section)
+        if field is None:
+            return
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return
+        setattr(user, field, func.now())
+        await self.session.flush()
+
+    async def increment_profile_views_count(self, user_id: int) -> None:
+        stmt = (
+            update(UserStats)
+            .where(UserStats.user_id == user_id)
+            .values(profile_views_count=UserStats.profile_views_count + 1)
+        )
+        await self.session.execute(stmt)
+        await self.session.flush()
+
+    async def increment_profile_visits_count(self, user_id: int) -> None:
+        stmt = (
+            update(UserStats)
+            .where(UserStats.user_id == user_id)
+            .values(profile_visits_count=UserStats.profile_visits_count + 1)
+        )
+        await self.session.execute(stmt)
+        await self.session.flush()

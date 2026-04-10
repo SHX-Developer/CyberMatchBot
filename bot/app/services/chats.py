@@ -28,6 +28,9 @@ class ChatService:
     async def create_or_get_chat(self, user_id: int, target_user_id: int) -> tuple[UserChat, bool]:
         return await self.chat_repo.get_or_create_private_chat(user_id, target_user_id)
 
+    async def unread_messages_count(self, user_id: int) -> int:
+        return await self.chat_repo.count_unread_messages_for_user(user_id)
+
     async def get_chat_for_user(self, chat_id: int, user_id: int) -> UserChat | None:
         return await self.chat_repo.get_chat_for_user(chat_id, user_id)
 

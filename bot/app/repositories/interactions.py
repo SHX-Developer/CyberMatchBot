@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import and_, delete, exists, func, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,3 +216,57 @@ class InteractionRepository:
         )
         rows = (await self.session.execute(stmt)).all()
         return self._rows_to_items(rows)
+
+    async def unread_activity_counters(
+        self,
+        user_id: int,
+        *,
+        seen_at: dict[str, datetime | None],
+    ) -> dict[str, int]:
+        subscriptions_seen = seen_at.get('subscriptions')
+        subscribers_seen = seen_at.get('subscribers')
+        likes_seen = seen_at.get('likes')
+        liked_by_seen = seen_at.get('liked_by')
+        friends_seen = seen_at.get('friends')
+
+        subscriptions_stmt = select(func.count(UserSubscription.id)).where(UserSubscription.follower_user_id == user_id)
+        if subscriptions_seen is not None:
+            subscriptions_stmt = subscriptions_stmt.where(UserSubscription.created_at > subscriptions_seen)
+
+        subscribers_stmt = select(func.count(UserSubscription.id)).where(UserSubscription.followed_user_id == user_id)
+        if subscribers_seen is not None:
+            subscribers_stmt = subscribers_stmt.where(UserSubscription.created_at > subscribers_seen)
+
+        likes_stmt = select(func.count(UserLike.id)).where(UserLike.from_user_id == user_id)
+        if likes_seen is not None:
+            likes_stmt = likes_stmt.where(UserLike.created_at > likes_seen)
+
+        liked_by_stmt = select(func.count(UserLike.id)).where(UserLike.to_user_id == user_id)
+        if liked_by_seen is not None:
+            liked_by_stmt = liked_by_stmt.where(UserLike.created_at > liked_by_seen)
+
+        left_sub = aliased(UserSubscription)
+        right_sub = aliased(UserSubscription)
+        friend_event_time = func.greatest(left_sub.created_at, right_sub.created_at)
+        friends_stmt = (
+            select(func.count(func.distinct(left_sub.followed_user_id)))
+            .select_from(left_sub)
+            .join(
+                right_sub,
+                and_(
+                    right_sub.follower_user_id == left_sub.followed_user_id,
+                    right_sub.followed_user_id == user_id,
+                ),
+            )
+            .where(left_sub.follower_user_id == user_id)
+        )
+        if friends_seen is not None:
+            friends_stmt = friends_stmt.where(friend_event_time > friends_seen)
+
+        return {
+            'subscriptions': int((await self.session.scalar(subscriptions_stmt)) or 0),
+            'subscribers': int((await self.session.scalar(subscribers_stmt)) or 0),
+            'likes': int((await self.session.scalar(likes_stmt)) or 0),
+            'liked_by': int((await self.session.scalar(liked_by_stmt)) or 0),
+            'friends': int((await self.session.scalar(friends_stmt)) or 0),
+        }

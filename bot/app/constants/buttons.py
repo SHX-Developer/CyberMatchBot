@@ -1,11 +1,11 @@
 BTN_FIND_TEAMMATE = "🔍 Найти тиммейта"
-BTN_MESSAGES = "💬 Чаты"
+BTN_MESSAGES = "💬 Сообщения"
 BTN_LIKES = "❤️ Лайки"
 BTN_SUBSCRIPTIONS = "⭐ Подписки"
 BTN_MY_PROFILES = "🎮 Мои анкеты"
-BTN_ACTIVITY = "📊 Активность"
+BTN_ACTIVITY = "⭐ Активность"
 BTN_PROFILE = "👤 Профиль"
-BTN_BACK = "⬅ Назад"
+BTN_BACK = "< Назад"
 BTN_SETTINGS = "Настройки"
 BTN_CREATE_PROFILE = "➕ Создать анкету"
 
@@ -13,6 +13,9 @@ BTN_FIND_TEAMMATE_TEXTS = (
     "🔍 Найти тиммейта",
     "🔍 Find teammate",
     "🔍 Jamoa topish",
+    "🔷 Найти тиммейта",
+    "🔷 Find teammate",
+    "🔷 Jamoa topish",
     "🎮 Найти тиммейта",
     "🎮 Find teammate",
     "🎮 Jamoa topish",
@@ -26,13 +29,20 @@ BTN_MY_PROFILES_TEXTS = (
     "📋 Mening anketalarim",
 )
 BTN_MESSAGES_TEXTS = (
+    "💬 Сообщения",
+    "💬 Messages",
+    "💬 Xabarlar",
     "💬 Чаты",
     "💬 Чат",
+    "💬 Message",
     "💬 Chats",
     "💬 Chat",
     "💬 Chatlar",
 )
 BTN_ACTIVITY_TEXTS = (
+    "⭐ Активность",
+    "⭐ Activity",
+    "⭐ Faollik",
     "📊 Активность",
     "📊 Activity",
     "📊 Faollik",

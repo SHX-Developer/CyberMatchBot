@@ -41,7 +41,11 @@ from app.constants import (
     CB_PROFILE_EDIT_USERNAME,
     CB_PROFILE_LANG_SET_PREFIX,
     CB_PROFILE_LANGUAGE,
+    CB_PROFILE_LAST_ACTIVITY,
+    CB_PROFILE_LAST_ACTIVITY_DISABLE,
+    CB_PROFILE_LAST_ACTIVITY_ENABLE,
     CB_PROFILE_NOTIFICATIONS,
+    CB_PROFILE_SETTINGS,
     CB_PROFILE_NOTIF_LIKES,
     CB_PROFILE_NOTIF_MESSAGES,
     CB_PROFILE_NOTIF_SUBS,
@@ -55,6 +59,7 @@ from app.constants import (
     CB_ACTIVITY_SECTION_PREFIX,
     CB_CHATS_CANCEL_SEND_PREFIX,
     CB_CHATS_CANCEL_NEW,
+    CB_CHATS_MENU,
     CB_CHATS_MESSAGES_PAGE_PREFIX,
     CB_CHATS_NEW,
     CB_CHATS_OPEN,
@@ -189,10 +194,12 @@ def delete_confirmation_keyboard(
     builder.button(
         text=i18n.t(locale, 'action.delete_confirm_yes'),
         callback_data=f'my_profiles:delete_yes:{profile_id}',
+        style='success',
     )
     builder.button(
         text=i18n.t(locale, 'action.delete_confirm_no'),
         callback_data='my_profiles:delete_no',
+        style='danger',
     )
     builder.adjust(2)
     return builder.as_markup()
@@ -269,11 +276,9 @@ def open_my_profiles_keyboard(i18n: LocalizationManager, locale: str) -> InlineK
 def profile_actions_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=i18n.t(locale, 'action.edit_data'), callback_data=CB_PROFILE_EDIT)
-    builder.button(text=i18n.t(locale, 'action.notifications'), callback_data=CB_PROFILE_NOTIFICATIONS)
-    builder.button(text=i18n.t(locale, 'action.language.short'), callback_data=CB_PROFILE_LANGUAGE)
     builder.button(text=i18n.t(locale, 'action.statistics'), callback_data=CB_PROFILE_STATS)
-    builder.button(text=i18n.t(locale, 'action.activity.short'), callback_data=CB_ACTIVITY_OPEN)
-    builder.adjust(1, 2, 2)
+    builder.button(text=i18n.t(locale, 'action.settings'), callback_data=CB_PROFILE_SETTINGS)
+    builder.adjust(1, 2)
     return builder.as_markup()
 
 
@@ -295,22 +300,62 @@ def profile_edit_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeybo
     return builder.as_markup()
 
 
+def profile_settings_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=i18n.t(locale, 'action.notifications'), callback_data=CB_PROFILE_NOTIFICATIONS)
+    builder.button(text=i18n.t(locale, 'action.language.short'), callback_data=CB_PROFILE_LANGUAGE)
+    builder.button(text=i18n.t(locale, 'action.last_activity'), callback_data=CB_PROFILE_LAST_ACTIVITY)
+    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
+    builder.adjust(2, 1, 1)
+    return builder.as_markup()
+
+
+def profile_last_activity_keyboard(i18n: LocalizationManager, locale: str, *, enabled: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    enable_text = i18n.t(locale, 'action.enable')
+    disable_text = i18n.t(locale, 'action.disable')
+    if enabled:
+        enable_text = f'✅ {enable_text}'
+    else:
+        disable_text = f'✅ {disable_text}'
+    builder.button(text=enable_text, callback_data=CB_PROFILE_LAST_ACTIVITY_ENABLE, style='success')
+    builder.button(text=disable_text, callback_data=CB_PROFILE_LAST_ACTIVITY_DISABLE, style='danger')
+    builder.button(text=i18n.t(locale, 'action.back_to_settings'), callback_data=CB_PROFILE_SETTINGS)
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
 def profile_notifications_keyboard(i18n: LocalizationManager, locale: str, settings: dict[str, bool]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     likes_state = i18n.t(locale, 'state.on') if settings.get('likes', True) else i18n.t(locale, 'state.off')
     subs_state = i18n.t(locale, 'state.on') if settings.get('subscriptions', True) else i18n.t(locale, 'state.off')
     msg_state = i18n.t(locale, 'state.on') if settings.get('messages', True) else i18n.t(locale, 'state.off')
-    builder.button(text=f"{i18n.t(locale, 'label.likes')} ({likes_state})", callback_data=CB_PROFILE_NOTIF_LIKES)
-    builder.button(text=f"{i18n.t(locale, 'label.subscriptions')} ({subs_state})", callback_data=CB_PROFILE_NOTIF_SUBS)
-    builder.button(text=f"{i18n.t(locale, 'label.messages')} ({msg_state})", callback_data=CB_PROFILE_NOTIF_MESSAGES)
-    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
+    likes_style = 'success' if settings.get('likes', True) else 'danger'
+    subs_style = 'success' if settings.get('subscriptions', True) else 'danger'
+    msg_style = 'success' if settings.get('messages', True) else 'danger'
+    builder.button(
+        text=f"{i18n.t(locale, 'label.likes')} ({likes_state})",
+        callback_data=CB_PROFILE_NOTIF_LIKES,
+        style=likes_style,
+    )
+    builder.button(
+        text=f"{i18n.t(locale, 'label.subscriptions')} ({subs_state})",
+        callback_data=CB_PROFILE_NOTIF_SUBS,
+        style=subs_style,
+    )
+    builder.button(
+        text=f"{i18n.t(locale, 'label.messages')} ({msg_state})",
+        callback_data=CB_PROFILE_NOTIF_MESSAGES,
+        style=msg_style,
+    )
+    builder.button(text=i18n.t(locale, 'action.back_to_settings'), callback_data=CB_PROFILE_SETTINGS)
     builder.adjust(1)
     return builder.as_markup()
 
 
 def profile_edit_cancel_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'action.cancel'), callback_data=CB_PROFILE_EDIT_CANCEL)
+    builder.button(text=i18n.t(locale, 'action.cancel'), callback_data=CB_PROFILE_EDIT_CANCEL, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
@@ -322,8 +367,11 @@ def profile_language_keyboard(i18n: LocalizationManager, locale: str) -> InlineK
         ('uz', "🇺🇿 O'zbekcha"),
         ('en', '🇬🇧 English'),
     ):
-        builder.button(text=title, callback_data=f'{CB_PROFILE_LANG_SET_PREFIX}{code}')
-    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
+        button_kwargs = {}
+        if code == locale:
+            button_kwargs['style'] = 'primary'
+        builder.button(text=title, callback_data=f'{CB_PROFILE_LANG_SET_PREFIX}{code}', **button_kwargs)
+    builder.button(text=i18n.t(locale, 'action.back_to_settings'), callback_data=CB_PROFILE_SETTINGS)
     builder.adjust(1, 1, 1, 1)
     return builder.as_markup()
 
@@ -342,7 +390,7 @@ def my_profile_details_keyboard() -> InlineKeyboardMarkup:
     builder.button(text='✏️ Изменить анкету', callback_data=CB_MY_PROFILES_EDIT)
     builder.button(text='🔄 Заполнить заново', callback_data=CB_MY_PROFILES_REFILL)
     builder.button(text='🗑 Удалить анкету', callback_data=CB_MY_PROFILES_DELETE_ASK)
-    builder.button(text='⬅ Назад', callback_data=CB_MY_PROFILES_BACK)
+    builder.button(text='< Назад', callback_data=CB_MY_PROFILES_BACK)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -351,15 +399,15 @@ def my_profiles_create_game_keyboard(*, games: list[GameCode]) -> InlineKeyboard
     builder = InlineKeyboardBuilder()
     for game in games:
         builder.button(text=_game_title(game), callback_data=f'{CB_MY_PROFILES_CREATE_PICK_PREFIX}{game.value}')
-    builder.button(text='⬅ Назад', callback_data=CB_MY_PROFILES_BACK)
+    builder.button(text='< Назад', callback_data=CB_MY_PROFILES_BACK)
     builder.adjust(1)
     return builder.as_markup()
 
 
 def my_profiles_delete_confirm_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='✅ Да, удалить', callback_data=CB_MY_PROFILES_DELETE_CONFIRM)
-    builder.button(text='❌ Отмена', callback_data=CB_MY_PROFILES_DELETE_CANCEL)
+    builder.button(text='✅ Да, удалить', callback_data=CB_MY_PROFILES_DELETE_CONFIRM, style='success')
+    builder.button(text='❌ Отмена', callback_data=CB_MY_PROFILES_DELETE_CANCEL, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
@@ -379,21 +427,21 @@ def my_profiles_edit_fields_keyboard(*, game: GameCode) -> InlineKeyboardMarkup:
     elif game == GameCode.PUBG_MOBILE:
         builder.button(text='🎖 Ранг', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}rank')
     builder.button(text='📝 О себе', callback_data=f'{CB_MY_PROFILES_EDIT_FIELD_PREFIX}about')
-    builder.button(text='⬅ Назад к анкете', callback_data=CB_MY_PROFILES_CARD_BACK)
+    builder.button(text='< Назад к анкете', callback_data=CB_MY_PROFILES_CARD_BACK)
     builder.adjust(1)
     return builder.as_markup()
 
 
 def my_profiles_create_cancel_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='❌ Отмена', callback_data=CB_MY_PROFILES_CREATE_CANCEL)
+    builder.button(text='❌ Отмена', callback_data=CB_MY_PROFILES_CREATE_CANCEL, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
 
 def my_profiles_edit_cancel_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text='❌ Отмена', callback_data=CB_MY_PROFILES_EDIT_CANCEL)
+    builder.button(text='❌ Отмена', callback_data=CB_MY_PROFILES_EDIT_CANCEL, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
@@ -416,7 +464,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
 def admin_stats_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text='🔄 Обновить', callback_data=CB_ADMIN_PANEL_REFRESH)
-    builder.button(text='⬅ Назад', callback_data=CB_ADMIN_PANEL_BACK)
+    builder.button(text='< Назад', callback_data=CB_ADMIN_PANEL_BACK)
     builder.button(text='💤 Скрыть', callback_data=CB_ADMIN_PANEL_HIDE)
     builder.adjust(2, 1)
     return builder.as_markup()
@@ -476,7 +524,7 @@ def my_profiles_mlbb_main_lane_keyboard(
             callback_data=f'{CB_MY_PROFILES_MLBB_MAIN_PREFIX}{lane.value}',
         )
     if include_cancel:
-        builder.button(text='❌ Отмена', callback_data=cancel_callback)
+        builder.button(text='❌ Отмена', callback_data=cancel_callback, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
@@ -508,7 +556,7 @@ def my_profiles_mlbb_extra_lanes_keyboard(
     )
     builder.button(text='✅ Готово', callback_data=CB_MY_PROFILES_MLBB_EXTRA_DONE)
     if include_cancel:
-        builder.button(text='❌ Отмена', callback_data=cancel_callback)
+        builder.button(text='❌ Отмена', callback_data=cancel_callback, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
@@ -522,7 +570,7 @@ def my_profiles_mlbb_rank_keyboard(
     for rank in ('Мастер', 'Грандмастер', 'Эпический', 'Легендарный', 'Мифический'):
         builder.button(text=rank, callback_data=f'{CB_MY_PROFILES_MLBB_RANK_PREFIX}{rank}')
     if include_cancel:
-        builder.button(text='❌ Отмена', callback_data=cancel_callback)
+        builder.button(text='❌ Отмена', callback_data=cancel_callback, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
@@ -537,7 +585,7 @@ def my_profiles_mlbb_server_keyboard(
         code = server.split(' ', 1)[1]
         builder.button(text=server, callback_data=f'{CB_MY_PROFILES_MLBB_SERVER_PREFIX}{code}')
     if include_cancel:
-        builder.button(text='❌ Отмена', callback_data=cancel_callback)
+        builder.button(text='❌ Отмена', callback_data=cancel_callback, style='danger')
         builder.adjust(3, 1)
         return builder.as_markup()
     builder.adjust(3)
@@ -558,7 +606,7 @@ def my_profiles_genshin_region_keyboard(
     ):
         builder.button(text=title, callback_data=f'{CB_MY_PROFILES_GENSHIN_REGION_PREFIX}{code}')
     if include_cancel:
-        builder.button(text='❌ Отмена', callback_data=cancel_callback)
+        builder.button(text='❌ Отмена', callback_data=cancel_callback, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
@@ -572,7 +620,7 @@ def my_profiles_pubg_rank_keyboard(
     for rank in PUBG_RANK_CHOICES:
         builder.button(text=rank, callback_data=f'{CB_MY_PROFILES_PUBG_RANK_PREFIX}{rank}')
     if include_cancel:
-        builder.button(text='❌ Отмена', callback_data=cancel_callback)
+        builder.button(text='❌ Отмена', callback_data=cancel_callback, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
@@ -696,14 +744,38 @@ def search_user_profiles_games_keyboard(*, i18n: LocalizationManager, locale: st
     return builder.as_markup()
 
 
-def activity_open_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
+def _label_with_counter(title: str, count: int) -> str:
+    return f'{title} ({count})' if count > 0 else title
+
+
+def activity_open_keyboard(
+    i18n: LocalizationManager,
+    locale: str,
+    *,
+    counters: dict[str, int] | None = None,
+) -> InlineKeyboardMarkup:
+    counters = counters or {}
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'activity.button.my_subscriptions'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscriptions:1')
-    builder.button(text=i18n.t(locale, 'activity.button.my_subscribers'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscribers:1')
-    builder.button(text=i18n.t(locale, 'activity.button.my_likes'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}likes:1')
-    builder.button(text=i18n.t(locale, 'activity.button.who_liked_me'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}liked_by:1')
-    builder.button(text=i18n.t(locale, 'activity.button.friends'), callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}friends:1')
-    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
+    builder.button(
+        text=_label_with_counter(i18n.t(locale, 'activity.button.my_subscriptions'), int(counters.get('subscriptions', 0))),
+        callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscriptions:1',
+    )
+    builder.button(
+        text=_label_with_counter(i18n.t(locale, 'activity.button.my_subscribers'), int(counters.get('subscribers', 0))),
+        callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}subscribers:1',
+    )
+    builder.button(
+        text=_label_with_counter(i18n.t(locale, 'activity.button.my_likes'), int(counters.get('likes', 0))),
+        callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}likes:1',
+    )
+    builder.button(
+        text=_label_with_counter(i18n.t(locale, 'activity.button.who_liked_me'), int(counters.get('liked_by', 0))),
+        callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}liked_by:1',
+    )
+    builder.button(
+        text=_label_with_counter(i18n.t(locale, 'activity.button.friends'), int(counters.get('friends', 0))),
+        callback_data=f'{CB_ACTIVITY_SECTION_PREFIX}friends:1',
+    )
     builder.adjust(1)
     return builder.as_markup()
 
@@ -741,13 +813,12 @@ def activity_section_keyboard(
             callback_data=f'{CB_ACTIVITY_PAGE_PREFIX}{section}:{page + 1}',
         )
     builder.button(text=i18n.t(locale, 'activity.button.back_to_activity'), callback_data=CB_ACTIVITY_BACK)
-    builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
     if has_previous and has_next:
-        builder.adjust(*(1 for _ in items), 2, 1, 1)
+        builder.adjust(*(1 for _ in items), 2, 1)
     elif has_previous or has_next:
-        builder.adjust(*(1 for _ in items), 1, 1, 1)
-    else:
         builder.adjust(*(1 for _ in items), 1, 1)
+    else:
+        builder.adjust(*(1 for _ in items), 1)
     return builder.as_markup()
 
 
@@ -799,45 +870,54 @@ def chat_view_keyboard(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=i18n.t(locale, 'chat.button.send'), callback_data=f'{CB_CHATS_SEND_PREFIX}{chat_id}')
-    if has_older:
-        builder.button(
-            text=i18n.t(locale, 'chat.button.older'),
-            callback_data=f'{CB_CHATS_MESSAGES_PAGE_PREFIX}{chat_id}:{page + 1}',
-        )
     if has_newer and page > 1:
         builder.button(
             text=i18n.t(locale, 'chat.button.newer'),
             callback_data=f'{CB_CHATS_MESSAGES_PAGE_PREFIX}{chat_id}:{page - 1}',
         )
+    if has_older:
+        builder.button(
+            text=i18n.t(locale, 'chat.button.older'),
+            callback_data=f'{CB_CHATS_MESSAGES_PAGE_PREFIX}{chat_id}:{page + 1}',
+        )
     builder.button(text=i18n.t(locale, 'chat.button.back_to_chats'), callback_data=CB_CHATS_OPEN)
+    builder.button(text=i18n.t(locale, 'chat.button.menu'), callback_data=CB_CHATS_MENU)
 
     if has_older and has_newer and page > 1:
-        builder.adjust(2, 1, 1)
+        builder.adjust(1, 2, 2)
     elif has_older or (has_newer and page > 1):
-        builder.adjust(1, 1, 1)
+        builder.adjust(1, 1, 2)
     else:
-        builder.adjust(1, 1)
+        builder.adjust(1, 2)
     return builder.as_markup()
 
 
 def chat_send_cancel_keyboard(*, i18n: LocalizationManager, locale: str, chat_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'chat.button.cancel_send'), callback_data=f'{CB_CHATS_CANCEL_SEND_PREFIX}{chat_id}')
+    builder.button(text=i18n.t(locale, 'chat.button.cancel_send'), callback_data=f'{CB_CHATS_CANCEL_SEND_PREFIX}{chat_id}', style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
 
 def chat_new_cancel_keyboard(*, i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'chat.button.cancel_new'), callback_data=CB_CHATS_CANCEL_NEW)
+    builder.button(text=i18n.t(locale, 'chat.button.cancel_new'), callback_data=CB_CHATS_CANCEL_NEW, style='danger')
     builder.adjust(1)
     return builder.as_markup()
 
 
-def chat_new_message_notice_keyboard(*, chat_id: int, nickname: str) -> InlineKeyboardMarkup:
+def chat_new_message_notice_keyboard(
+    *,
+    i18n: LocalizationManager,
+    locale: str,
+    chat_id: int,
+    user_id: int,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=f'🔴 {nickname}', callback_data=f'{CB_CHATS_OPEN_CHAT_PREFIX}{chat_id}')
-    builder.adjust(1)
+    builder.button(text=i18n.t(locale, 'search.button.reply'), callback_data=f'{CB_CHATS_OPEN_CHAT_PREFIX}{chat_id}', style='primary')
+    builder.button(text=i18n.t(locale, 'search.button.profile_short'), callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{user_id}:msg')
+    builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE, style='danger')
+    builder.adjust(2, 1)
     return builder.as_markup()
 
 
@@ -867,6 +947,6 @@ def search_hide_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboa
 
 def search_message_cancel_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'action.cancel'), callback_data=CB_SEARCH_CANCEL_MESSAGE)
+    builder.button(text=i18n.t(locale, 'action.cancel'), callback_data=CB_SEARCH_CANCEL_MESSAGE, style='danger')
     builder.adjust(1)
     return builder.as_markup()

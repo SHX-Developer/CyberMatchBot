@@ -50,6 +50,15 @@ class ChatRepository:
         )
         return int((await self.session.scalar(stmt)) or 0)
 
+    async def count_unread_messages_for_user(self, user_id: int) -> int:
+        stmt = select(func.count(UserMessage.id)).where(
+            and_(
+                UserMessage.to_user_id == user_id,
+                UserMessage.is_read.is_(False),
+            )
+        )
+        return int((await self.session.scalar(stmt)) or 0)
+
     async def list_user_chats(self, user_id: int, *, limit: int, offset: int) -> list[dict[str, int | str | None]]:
         counterpart_id_expr = case(
             (UserChat.participant_1_id == user_id, UserChat.participant_2_id),

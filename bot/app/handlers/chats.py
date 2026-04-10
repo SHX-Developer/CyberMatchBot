@@ -1,8 +1,9 @@
+import re
 from html import escape
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import StateFilter
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from app.constants import (
     CB_CHATS_CANCEL_NEW,
     CB_CHATS_CANCEL_SEND_PREFIX,
     CB_CHATS_DELETE_PREFIX,
+    CB_CHATS_MENU,
     CB_CHATS_MESSAGES_PAGE_PREFIX,
     CB_CHATS_NEW,
     CB_CHATS_OPEN,
@@ -19,6 +21,7 @@ from app.constants import (
     CB_CHATS_PAGE_PREFIX,
     CB_CHATS_SEND_PREFIX,
     CHAT_IMAGE_FILE_ID,
+    MAIN_MENU_IMAGE_FILE_ID,
 )
 from app.handlers.context import ensure_user_and_locale
 from app.handlers.states import ChatStates
@@ -31,11 +34,34 @@ from app.keyboards import (
 )
 from app.locales import LocalizationManager
 from app.services import ChatService, MessageService, UserService
+from app.handlers.context import main_menu_keyboard_with_counters
 
 router = Router(name='chats')
 
 CHAT_PAGE_SIZE = 10
 MESSAGE_PAGE_SIZE = 10
+
+MESSAGES_BUTTON_BASES = (
+    'чаты',
+    'чат',
+    'сообщения',
+    'chat',
+    'chats',
+    'messages',
+    'message',
+    'xabarlar',
+)
+
+
+def _is_messages_menu_button(text: str | None) -> bool:
+    if not isinstance(text, str):
+        return False
+    normalized = text.strip()
+    if normalized in BTN_MESSAGES_TEXTS:
+        return True
+    normalized = re.sub(r'\s*\(\d+\)\s*$', '', normalized)
+    normalized = re.sub(r'^[^\wа-яА-Я]+', '', normalized).strip().lower()
+    return normalized in MESSAGES_BUTTON_BASES
 
 
 def _display_title(*, full_name: str | None, username: str | None, user_id: int, locale: str, i18n: LocalizationManager) -> str:
@@ -105,7 +131,7 @@ async def _render_chats_list(
             }
         )
 
-    text_lines = [f"<b>{i18n.t(locale, 'chat.list.title')}</b>"]
+    text_lines = [f"<b>{i18n.t(locale, 'chat.list.title')}</b>", '', i18n.t(locale, 'chat.list.subtitle')]
     if not items:
         text_lines.extend(['', i18n.t(locale, 'chat.list.empty')])
     if total_pages > 1:
@@ -171,9 +197,14 @@ async def _notify_about_new_message(
     try:
         await message.bot.send_message(
             receiver_id,
-            i18n.t(receiver_locale, 'chat.notify.new_in_chat'),
+            i18n.t(receiver_locale, 'chat.notify.new_in_chat', nickname=escape(sender_name)),
             parse_mode='HTML',
-            reply_markup=chat_new_message_notice_keyboard(chat_id=chat_id, nickname=sender_name),
+            reply_markup=chat_new_message_notice_keyboard(
+                i18n=i18n,
+                locale=receiver_locale,
+                chat_id=chat_id,
+                user_id=sender_id,
+            ),
         )
     except Exception:
         pass
@@ -255,7 +286,85 @@ async def _render_chat_view(
     return True
 
 
-@router.message(F.text.in_(BTN_MESSAGES_TEXTS))
+async def _render_chat_view_by_ref(
+    *,
+    bot,
+    target_chat_id: int,
+    target_message_id: int,
+    user_id: int,
+    locale: str,
+    i18n: LocalizationManager,
+    session: AsyncSession,
+    chat_id: int,
+    page: int = 1,
+) -> bool:
+    chat_service = ChatService(session)
+    chat = await chat_service.get_chat_for_user(chat_id, user_id)
+    if chat is None:
+        return False
+
+    counterpart = await chat_service.get_counterpart_user(chat, user_id)
+    counterpart_name = _display_title(
+        full_name=getattr(counterpart, 'full_name', None),
+        username=getattr(counterpart, 'username', None),
+        user_id=chat.participant_2_id if chat.participant_1_id == user_id else chat.participant_1_id,
+        locale=locale,
+        i18n=i18n,
+    )
+
+    messages_payload = await MessageService(session).list_chat_messages_paginated(
+        chat_id=chat.id,
+        user_id=user_id,
+        page=page,
+        page_size=MESSAGE_PAGE_SIZE,
+    )
+    if messages_payload is None:
+        return False
+
+    items = messages_payload['items'] if isinstance(messages_payload.get('items'), list) else []
+    safe_page = int(messages_payload.get('page', 1) or 1)
+    total_pages = int(messages_payload.get('total_pages', 1) or 1)
+    has_older = bool(messages_payload.get('has_older', False))
+    has_newer = bool(messages_payload.get('has_newer', False))
+
+    lines: list[str] = [f"<b>{i18n.t(locale, 'chat.open.title', nickname=escape(counterpart_name))}</b>", '']
+    if not items:
+        lines.append(i18n.t(locale, 'chat.open.empty'))
+    else:
+        for entity in items:
+            text = escape((entity.text or '').strip())
+            speaker = i18n.t(locale, 'chat.label.you') if int(entity.from_user_id) == user_id else counterpart_name
+            lines.append(f"<b>{escape(speaker)}:</b>")
+            lines.append(f'- {text}')
+            lines.append('')
+    if total_pages > 1:
+        lines.append(i18n.t(locale, 'chat.list.page', page=safe_page, total_pages=total_pages))
+    text = '\n'.join(lines).strip()
+
+    keyboard = chat_view_keyboard(
+        i18n=i18n,
+        locale=locale,
+        chat_id=chat.id,
+        page=safe_page,
+        has_older=has_older,
+        has_newer=has_newer,
+    )
+    try:
+        await bot.edit_message_text(
+            chat_id=target_chat_id,
+            message_id=target_message_id,
+            text=text,
+            reply_markup=keyboard,
+        )
+    except TelegramBadRequest as exc:
+        if 'message is not modified' in str(exc):
+            return True
+        return False
+    return True
+
+
+@router.message(F.text.func(_is_messages_menu_button))
+@router.message(Command('messages'))
 async def chats_open_message(
     message: Message,
     state: FSMContext,
@@ -333,6 +442,38 @@ async def chats_page_callback(
     )
 
 
+@router.callback_query(F.data == CB_CHATS_MENU)
+async def chats_menu_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+    _, locale = await ensure_user_and_locale(callback.from_user, session)
+    await state.clear()
+    if locale is None:
+        await callback.answer()
+        return
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
+    await callback.message.answer_photo(
+        photo=MAIN_MENU_IMAGE_FILE_ID,
+        caption=i18n.t(locale, 'start.welcome'),
+        parse_mode='HTML',
+        reply_markup=await main_menu_keyboard_with_counters(
+            user_id=callback.from_user.id,
+            locale=locale,
+            session=session,
+            i18n=i18n,
+        ),
+    )
+
+
 @router.callback_query(F.data == CB_CHATS_NEW)
 async def chats_start_new_callback(
     callback: CallbackQuery,
@@ -360,7 +501,7 @@ async def chats_cancel_new_callback(callback: CallbackQuery, state: FSMContext) 
     if not isinstance(callback.message, Message):
         return
     await state.clear()
-    await callback.answer()
+    await callback.answer('Окей, отменил 👌', show_alert=False)
     try:
         await callback.message.delete()
     except TelegramBadRequest:
@@ -510,7 +651,11 @@ async def chats_send_callback(
         return
 
     await state.set_state(ChatStates.waiting_for_chat_message)
-    await state.update_data(chat_send_chat_id=chat.id)
+    await state.update_data(
+        chat_send_chat_id=chat.id,
+        chat_view_chat_id=callback.message.chat.id,
+        chat_view_message_id=callback.message.message_id,
+    )
     await callback.answer()
     prompt = await callback.message.answer(
         i18n.t(locale, 'chat.send.prompt'),
@@ -531,7 +676,7 @@ async def chats_cancel_send_callback(
     if not isinstance(callback.message, Message):
         return
     await state.clear()
-    await callback.answer()
+    await callback.answer('Окей, отменил 👌', show_alert=False)
     try:
         await callback.message.delete()
     except TelegramBadRequest:
@@ -554,6 +699,8 @@ async def chats_send_message_input(
     chat_id_raw = data.get('chat_send_chat_id')
     prompt_chat_id = data.get('chat_send_prompt_chat_id')
     prompt_message_id = data.get('chat_send_prompt_message_id')
+    chat_view_chat_id = data.get('chat_view_chat_id')
+    chat_view_message_id = data.get('chat_view_message_id')
     if not isinstance(chat_id_raw, int):
         await state.clear()
         await message.answer(i18n.t(locale, 'chat.not_found'))
@@ -611,16 +758,30 @@ async def chats_send_message_input(
         await message.delete()
     except TelegramBadRequest:
         pass
-    await _render_chat_view(
-        message=message,
-        user_id=user_id,
-        locale=locale,
-        i18n=i18n,
-        session=session,
-        chat_id=chat_id_raw,
-        page=1,
-        use_edit=False,
-    )
+    rendered = False
+    if isinstance(chat_view_chat_id, int) and isinstance(chat_view_message_id, int):
+        rendered = await _render_chat_view_by_ref(
+            bot=message.bot,
+            target_chat_id=chat_view_chat_id,
+            target_message_id=chat_view_message_id,
+            user_id=user_id,
+            locale=locale,
+            i18n=i18n,
+            session=session,
+            chat_id=chat_id_raw,
+            page=1,
+        )
+    if not rendered:
+        await _render_chat_view(
+            message=message,
+            user_id=user_id,
+            locale=locale,
+            i18n=i18n,
+            session=session,
+            chat_id=chat_id_raw,
+            page=1,
+            use_edit=False,
+        )
 
 
 @router.callback_query(F.data.startswith(CB_CHATS_DELETE_PREFIX))

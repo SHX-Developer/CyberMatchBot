@@ -377,7 +377,7 @@ def _game_title(game: GameCode) -> str:
     if game == GameCode.GENSHIN_IMPACT:
         return 'Genshin Impact'
     if game == GameCode.PUBG_MOBILE:
-        return 'Pubg Mobile'
+        return 'PUBG Mobile'
     return 'Неизвестная игра'
 
 
@@ -437,13 +437,14 @@ def _format_rank(rank: str | None, mythic_stars: int | None) -> str:
 
 
 def _dashboard_text(profiles_by_game: dict[GameCode, object]) -> str:
-    lines = ['<b>🎮 Ваши игровые анкеты</b>', '']
+    lines = ['<b>🎮 Твои игровые анкеты</b>', '']
     for game in SUPPORTED_GAMES:
         if game in profiles_by_game:
-            lines.append(f'✅ {_game_title(game)}: Создана')
+            lines.append(f'✅ {_game_title(game)} — готово к поиску')
         else:
-            lines.append(f'❌ {_game_title(game)}: Не создана')
+            lines.append(f'❌ {_game_title(game)} — не создана')
         lines.append('')
+    lines.append('🔥 Создай анкеты и открывай больше возможностей')
     return '\n'.join(lines)
 
 
@@ -832,6 +833,7 @@ async def _finalize_profile_edit_success(
 
 
 @router.message(F.text.in_(BTN_MY_PROFILES_TEXTS))
+@router.message(Command('profiles'))
 async def my_profiles_open_handler(
     message: Message,
     state: FSMContext,
@@ -930,7 +932,7 @@ async def my_profiles_create_menu_handler(callback: CallbackQuery, state: FSMCon
     await callback.answer()
     await _edit_screen(
         callback.message,
-        caption='<b>🎮 Выберите игру для создания анкеты</b>',
+        caption='<b>🎮 Выбери игру для создания анкеты</b>',
         reply_markup=my_profiles_create_game_keyboard(games=missing_games),
         photo_file_id=MY_PROFILES_CREATE_IMAGE_FILE_ID,
     )
@@ -989,8 +991,8 @@ async def my_profiles_create_pick_handler(callback: CallbackQuery, state: FSMCon
     )
     await _remember_message(state, callback.message)
     prompt = await callback.message.answer(
-        "📸 <b>Отправьте скриншот вашей анкеты из игры.</b>\n\n"
-        "Это поможет другим игрокам быстрее вас узнать.",
+        "📸 <b>Отправь скриншот своей анкеты из игры</b>\n\n"
+        "👀 Это поможет другим игрокам быстрее тебя узнать",
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1019,7 +1021,7 @@ async def my_profiles_create_cancel_handler(callback: CallbackQuery, state: FSMC
             )
             if is_incomplete:
                 await ProfileService(session).delete_owned_profile(user_id, profile.id)
-    await callback.answer('Заполнение отменено')
+    await callback.answer('Окей, отменил 👌', show_alert=False)
     await _delete_prompt_by_ref(state, callback.message)
     await _delete_temp_notices(state, callback.message)
     await state.set_state(None)
@@ -1043,7 +1045,7 @@ async def mlbb_create_photo_handler(
     photo_file_id = _message_image_file_id(message)
     if photo_file_id is None:
         await _delete_user_message(message)
-        await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
+        await _send_error_notice(message, 'Отправь изображение.')
         return
     await state.update_data(mlbb_photo_file_id=photo_file_id)
     data = await state.get_data()
@@ -1056,7 +1058,7 @@ async def mlbb_create_photo_handler(
     await state.set_state(ProfilesSectionStates.mlbb_waiting_game_id)
     await _cleanup_input_messages(state, message)
     prompt = await message.answer(
-        "<b>🆔 Отправьте UID из игры (без Zone ID):</b>\n\nПример: <code>12345767890</code>",
+        "<b>🆔 Отправь UID из игры (без Zone ID):</b>\n\nПример: <code>12345767890</code>",
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1068,7 +1070,7 @@ async def mlbb_create_photo_invalid_handler(message: Message, state: FSMContext,
 
     await ensure_user_and_locale(message.from_user, session)
     await _delete_user_message(message)
-    await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
+    await _send_error_notice(message, 'Отправь изображение.')
 
 
 @router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_game_id))
@@ -1082,7 +1084,7 @@ async def mlbb_create_game_id_handler(message: Message, state: FSMContext, sessi
     if not is_valid_mlbb_player_id(game_id_raw):
         await _send_error_notice(
             message,
-            '❌ <b>Неверный формат UID.</b>\n\nОтправьте только UID без Zone ID.\nПример: <code>12345767890</code>',
+            '❌ <b>Неверный формат UID.</b>\n\nОтправь только UID без Zone ID.\nПример: <code>12345767890</code>',
         )
         return
 
@@ -1090,7 +1092,7 @@ async def mlbb_create_game_id_handler(message: Message, state: FSMContext, sessi
         await _send_error_notice(
             message,
             '⚠️ Такой MLBB ID уже используется в другой анкете.\n\n'
-            'Пожалуйста, введите другой ID.',
+            'Введи другой ID.',
         )
         return
 
@@ -1106,7 +1108,7 @@ async def mlbb_create_game_id_handler(message: Message, state: FSMContext, sessi
     await state.set_state(ProfilesSectionStates.mlbb_waiting_server)
     await _cleanup_input_messages(state, message)
     prompt = await message.answer(
-        '🌍 <b>Выберите ваш регион в игре.</b>',
+        '🌍 <b>Выбери свой регион в игре.</b>',
         reply_markup=my_profiles_mlbb_server_keyboard(include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
@@ -1143,14 +1145,14 @@ async def mlbb_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
     if rank == 'Мифический':
         await state.set_state(ProfilesSectionStates.mlbb_waiting_mythic_stars)
         prompt = await callback.message.answer(
-            '⭐ <b>Введите количество звезд (только число):</b>',
+            '⭐ <b>Введи количество звезд (только число):</b>',
         )
         await _remember_prompt_message(state, prompt)
         return
 
     await state.set_state(ProfilesSectionStates.mlbb_waiting_main_lane)
     prompt = await callback.message.answer(
-        '🛡 <b>Выберите вашу основную линию:</b>',
+        '🛡 <b>Выбери свою основную линию:</b>',
         reply_markup=my_profiles_mlbb_main_lane_keyboard(i18n, locale, include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
@@ -1161,7 +1163,7 @@ async def mlbb_create_rank_invalid_handler(message: Message, state: FSMContext, 
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_mlbb_rank_keyboard(include_cancel=False))
+    await message.answer('Выбери ранг кнопками ниже.', reply_markup=my_profiles_mlbb_rank_keyboard(include_cancel=False))
 
 
 @router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_mythic_stars))
@@ -1177,7 +1179,7 @@ async def mlbb_create_mythic_stars_handler(
     locale = locale or i18n.default_locale
     raw = (message.text or '').strip()
     if not raw.isdigit():
-        await _send_error_notice(message, 'Введите количество звезд цифрами.')
+        await _send_error_notice(message, 'Введи количество звезд цифрами.')
         return
     stars = int(raw)
     if stars <= 0 or stars > 999:
@@ -1196,7 +1198,7 @@ async def mlbb_create_mythic_stars_handler(
     await state.set_state(ProfilesSectionStates.mlbb_waiting_main_lane)
     await _cleanup_input_messages(state, message)
     prompt = await message.answer(
-        '🛡 <b>Выберите вашу основную линию:</b>',
+        '🛡 <b>Выбери свою основную линию:</b>',
         reply_markup=my_profiles_mlbb_main_lane_keyboard(i18n, locale, include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
@@ -1228,7 +1230,7 @@ async def mlbb_create_main_lane_handler(callback: CallbackQuery, state: FSMConte
     await callback.answer()
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
-        text='🎯 <b>Выберите дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
+        text='🎯 <b>Выбери дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
         reply_markup=my_profiles_mlbb_extra_lanes_keyboard(
             i18n,
             locale,
@@ -1280,7 +1282,7 @@ async def mlbb_create_extra_lane_toggle_handler(
     await state.update_data(mlbb_extra_lanes=[value.value for value in selected])
     await callback.answer()
     await callback.message.edit_text(
-        '🎯 <b>Выберите дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
+        '🎯 <b>Выбери дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
         reply_markup=my_profiles_mlbb_extra_lanes_keyboard(
             i18n,
             locale,
@@ -1315,7 +1317,7 @@ async def mlbb_create_extra_done_handler(
             extra_lanes.append(lane)
 
     if not extra_lanes:
-        await callback.answer('Выберите хотя бы одну дополнительную линию', show_alert=True)
+        await callback.answer('Выбери хотя бы одну дополнительную линию', show_alert=True)
         return
 
     await state.update_data(mlbb_extra_lanes=[lane.value for lane in extra_lanes])
@@ -1331,8 +1333,8 @@ async def mlbb_create_extra_done_handler(
     await callback.answer()
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
-        '📝 <b>Добавьте описание в анкету:</b>\n\n'
-        'Расскажите кратко о стиле игры, роли и когда обычно играете.',
+        '📝 <b>Добавь описание в анкету:</b>\n\n'
+        'Коротко расскажи про стиль игры, роль и когда ты онлайн.',
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1364,7 +1366,7 @@ async def mlbb_create_server_handler(callback: CallbackQuery, state: FSMContext,
     await callback.answer()
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
-        '🎖 <b>Выберите ваш ранг:</b>',
+        '🎖 <b>Выбери свой ранг:</b>',
         reply_markup=my_profiles_mlbb_rank_keyboard(include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
@@ -1375,7 +1377,7 @@ async def mlbb_create_server_invalid_handler(message: Message, state: FSMContext
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Выберите сервер кнопками ниже.', reply_markup=my_profiles_mlbb_server_keyboard(include_cancel=False))
+    await message.answer('Выбери сервер кнопками ниже.', reply_markup=my_profiles_mlbb_server_keyboard(include_cancel=False))
 
 
 @router.message(StateFilter(ProfilesSectionStates.mlbb_waiting_about))
@@ -1417,12 +1419,12 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         or not isinstance(server, str)
         or not isinstance(main_lane_raw, str)
     ):
-        await _send_error_notice(message, 'Не удалось завершить анкету.')
+        await _send_error_notice(message, 'Не получилось завершить анкету. Попробуй ещё раз.')
         return
 
     main_lane = _parse_lane(main_lane_raw)
     if main_lane is None:
-        await _send_error_notice(message, 'Не удалось завершить анкету.')
+        await _send_error_notice(message, 'Не получилось завершить анкету. Попробуй ещё раз.')
         return
 
     extra_lanes: list[MlbbLaneCode] = []
@@ -1431,7 +1433,7 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         if lane is not None and lane != main_lane:
             extra_lanes.append(lane)
     if not extra_lanes:
-        await _send_error_notice(message, 'Выберите хотя бы одну дополнительную линию.')
+        await _send_error_notice(message, 'Выбери хотя бы одну дополнительную линию.')
         return
 
     mythic_stars_raw = data.get('mlbb_mythic_stars')
@@ -1470,7 +1472,7 @@ async def mlbb_create_about_handler(message: Message, state: FSMContext, session
         reply_markup=my_profile_details_keyboard(),
         photo_file_id=profile.profile_image_file_id,
     )
-    await message.answer('✅ Анкета успешно создана!', reply_markup=my_profiles_hide_notice_keyboard())
+    await message.answer('✅ Анкета готова к поиску', reply_markup=my_profiles_hide_notice_keyboard())
     await state.set_state(None)
     await state.update_data(create_mode=None)
 
@@ -1483,7 +1485,7 @@ async def genshin_create_photo_handler(message: Message, state: FSMContext, sess
     photo_file_id = _message_image_file_id(message)
     if photo_file_id is None:
         await _delete_user_message(message)
-        await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
+        await _send_error_notice(message, 'Отправь изображение.')
         return
     await state.update_data(genshin_photo_file_id=photo_file_id)
     data = await state.get_data()
@@ -1496,7 +1498,7 @@ async def genshin_create_photo_handler(message: Message, state: FSMContext, sess
     await state.set_state(ProfilesSectionStates.genshin_waiting_uid)
     await _cleanup_input_messages(state, message)
     prompt = await message.answer(
-        '<b>🆔 Отправьте UID из игры:</b>\n\nПример: <code>712345678</code>',
+        '<b>🆔 Отправь UID из игры:</b>\n\nПример: <code>712345678</code>',
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1507,7 +1509,7 @@ async def genshin_create_photo_invalid_handler(message: Message, state: FSMConte
         return
     await ensure_user_and_locale(message.from_user, session)
     await _delete_user_message(message)
-    await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
+    await _send_error_notice(message, 'Отправь изображение.')
 
 
 @router.message(StateFilter(ProfilesSectionStates.genshin_waiting_uid))
@@ -1519,7 +1521,7 @@ async def genshin_create_uid_handler(message: Message, state: FSMContext, sessio
     if not _is_valid_uid(uid, min_len=8, max_len=12):
         await _send_error_notice(
             message,
-            '❌ <b>Неверный формат UID.</b>\n\nВведите только цифры.\nПример: <code>712345678</code>',
+            '❌ <b>Неверный формат UID.</b>\n\nВведи только цифры.\nПример: <code>712345678</code>',
         )
         return
     if await ProfileService(session).game_id_exists(game=GameCode.GENSHIN_IMPACT, game_player_id=uid, exclude_owner_id=user_id):
@@ -1537,7 +1539,7 @@ async def genshin_create_uid_handler(message: Message, state: FSMContext, sessio
     await state.set_state(ProfilesSectionStates.genshin_waiting_region)
     await _cleanup_input_messages(state, message)
     prompt = await message.answer(
-        '🌍 <b>Выберите ваш регион:</b>',
+        '🌍 <b>Выбери свой регион:</b>',
         reply_markup=my_profiles_genshin_region_keyboard(include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
@@ -1568,7 +1570,7 @@ async def genshin_create_region_handler(callback: CallbackQuery, state: FSMConte
     await callback.answer()
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
-        '⭐ <b>Введите уровень приключения (1-60):</b>',
+        '⭐ <b>Введи уровень приключения (1-60):</b>',
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1578,7 +1580,7 @@ async def genshin_create_region_invalid_handler(message: Message, state: FSMCont
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Выберите регион кнопками ниже.', reply_markup=my_profiles_genshin_region_keyboard(include_cancel=False))
+    await message.answer('Выбери регион кнопками ниже.', reply_markup=my_profiles_genshin_region_keyboard(include_cancel=False))
 
 
 @router.message(StateFilter(ProfilesSectionStates.genshin_waiting_adventure_level))
@@ -1588,7 +1590,7 @@ async def genshin_create_level_handler(message: Message, state: FSMContext, sess
     await ensure_user_and_locale(message.from_user, session)
     raw = (message.text or '').strip()
     if not raw.isdigit():
-        await _send_error_notice(message, 'Введите уровень цифрами от 1 до 60.')
+        await _send_error_notice(message, 'Введи уровень цифрами от 1 до 60.')
         return
     level = int(raw)
     if not (1 <= level <= 60):
@@ -1606,7 +1608,7 @@ async def genshin_create_level_handler(message: Message, state: FSMContext, sess
     await state.set_state(ProfilesSectionStates.genshin_waiting_about)
     await _cleanup_input_messages(state, message)
     prompt = await message.answer(
-        '📝 <b>Добавьте описание в анкету:</b>',
+        '📝 <b>Добавь описание в анкету:</b>',
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1637,7 +1639,7 @@ async def genshin_create_about_handler(message: Message, state: FSMContext, sess
     region = data.get('genshin_region')
     level = _adventure_level_value(data.get('genshin_adventure_level'))
     if not isinstance(photo_file_id, str) or not isinstance(uid, str) or not isinstance(region, str) or level is None:
-        await _send_error_notice(message, 'Не удалось завершить анкету.')
+        await _send_error_notice(message, 'Не получилось завершить анкету. Попробуй ещё раз.')
         return
     profile = await ProfileService(session).save_genshin_profile(
         owner_id=user_id,
@@ -1666,7 +1668,7 @@ async def genshin_create_about_handler(message: Message, state: FSMContext, sess
         reply_markup=my_profile_details_keyboard(),
         photo_file_id=profile.profile_image_file_id,
     )
-    await message.answer('✅ Анкета успешно создана!', reply_markup=my_profiles_hide_notice_keyboard())
+    await message.answer('✅ Анкета готова к поиску', reply_markup=my_profiles_hide_notice_keyboard())
     await state.set_state(None)
     await state.update_data(create_mode=None)
 
@@ -1679,7 +1681,7 @@ async def pubg_create_photo_handler(message: Message, state: FSMContext, session
     photo_file_id = _message_image_file_id(message)
     if photo_file_id is None:
         await _delete_user_message(message)
-        await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
+        await _send_error_notice(message, 'Отправь изображение.')
         return
     await state.update_data(pubg_photo_file_id=photo_file_id)
     data = await state.get_data()
@@ -1692,7 +1694,7 @@ async def pubg_create_photo_handler(message: Message, state: FSMContext, session
     await state.set_state(ProfilesSectionStates.pubg_waiting_uid)
     await _cleanup_input_messages(state, message)
     prompt = await message.answer(
-        '<b>🆔 Отправьте UID из игры:</b>\n\nПример: <code>51234567890</code>',
+        '<b>🆔 Отправь UID из игры:</b>\n\nПример: <code>51234567890</code>',
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1703,7 +1705,7 @@ async def pubg_create_photo_invalid_handler(message: Message, state: FSMContext,
         return
     await ensure_user_and_locale(message.from_user, session)
     await _delete_user_message(message)
-    await _send_error_notice(message, 'Пожалуйста, отправьте изображение.')
+    await _send_error_notice(message, 'Отправь изображение.')
 
 
 @router.message(StateFilter(ProfilesSectionStates.pubg_waiting_uid))
@@ -1715,7 +1717,7 @@ async def pubg_create_uid_handler(message: Message, state: FSMContext, session: 
     if not _is_valid_uid(uid, min_len=8, max_len=20):
         await _send_error_notice(
             message,
-            '❌ <b>Неверный формат UID.</b>\n\nВведите только цифры.',
+            '❌ <b>Неверный формат UID.</b>\n\nВведи только цифры.',
         )
         return
     if await ProfileService(session).game_id_exists(game=GameCode.PUBG_MOBILE, game_player_id=uid, exclude_owner_id=user_id):
@@ -1733,7 +1735,7 @@ async def pubg_create_uid_handler(message: Message, state: FSMContext, session: 
     await state.set_state(ProfilesSectionStates.pubg_waiting_rank)
     await _cleanup_input_messages(state, message)
     prompt = await message.answer(
-        '🎖 <b>Выберите ваш ранг:</b>',
+        '🎖 <b>Выбери свой ранг:</b>',
         reply_markup=my_profiles_pubg_rank_keyboard(include_cancel=False),
     )
     await _remember_prompt_message(state, prompt)
@@ -1764,7 +1766,7 @@ async def pubg_create_rank_handler(callback: CallbackQuery, state: FSMContext, s
     await callback.answer()
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
-        '📝 <b>Добавьте описание в анкету:</b>',
+        '📝 <b>Добавь описание в анкету:</b>',
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1774,7 +1776,7 @@ async def pubg_create_rank_invalid_handler(message: Message, state: FSMContext, 
     if message.from_user is None:
         return
     await ensure_user_and_locale(message.from_user, session)
-    await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_pubg_rank_keyboard(include_cancel=False))
+    await message.answer('Выбери ранг кнопками ниже.', reply_markup=my_profiles_pubg_rank_keyboard(include_cancel=False))
 
 
 @router.message(StateFilter(ProfilesSectionStates.pubg_waiting_about))
@@ -1802,7 +1804,7 @@ async def pubg_create_about_handler(message: Message, state: FSMContext, session
     uid = data.get('pubg_uid')
     rank = data.get('pubg_rank')
     if not isinstance(photo_file_id, str) or not isinstance(uid, str) or not isinstance(rank, str):
-        await _send_error_notice(message, 'Не удалось завершить анкету.')
+        await _send_error_notice(message, 'Не получилось завершить анкету. Попробуй ещё раз.')
         return
     profile = await ProfileService(session).save_pubg_profile(
         owner_id=user_id,
@@ -1830,7 +1832,7 @@ async def pubg_create_about_handler(message: Message, state: FSMContext, session
         reply_markup=my_profile_details_keyboard(),
         photo_file_id=profile.profile_image_file_id,
     )
-    await message.answer('✅ Анкета успешно создана!', reply_markup=my_profiles_hide_notice_keyboard())
+    await message.answer('✅ Анкета готова к поиску', reply_markup=my_profiles_hide_notice_keyboard())
     await state.set_state(None)
     await state.update_data(create_mode=None)
 
@@ -1850,7 +1852,7 @@ async def my_profiles_edit_menu_handler(callback: CallbackQuery, state: FSMConte
     await callback.answer()
     await _edit_screen(
         callback.message,
-        caption='<b>⚙️ Выберите, что хотите изменить:</b>',
+        caption='<b>🔧 Управление анкетой</b>\n\n👇 Выбирай, что изменить',
         reply_markup=my_profiles_edit_fields_keyboard(game=active_game),
         photo_file_id=photo_file_id,
     )
@@ -1917,8 +1919,8 @@ async def my_profiles_refill_handler(callback: CallbackQuery, state: FSMContext,
     await _remember_message(state, callback.message)
     await _delete_prompt_by_ref(state, callback.message)
     prompt = await callback.message.answer(
-        "📸 <b>Отправьте скриншот вашей анкеты из игры.</b>\n\n"
-        "Это поможет другим игрокам быстрее вас узнать.",
+        "📸 <b>Отправь скриншот своей анкеты из игры</b>\n\n"
+        "👀 Это поможет другим игрокам быстрее тебя узнать",
     )
     await _remember_prompt_message(state, prompt)
 
@@ -1950,7 +1952,7 @@ async def my_profiles_edit_field_handler(
         await state.set_state(ProfilesSectionStates.edit_waiting_photo)
         await state.update_data(edit_field=field)
         prompt = await callback.message.answer(
-            '🖼 <b>Отправьте новую картинку анкеты.</b>',
+            '🖼 <b>Отправь новую картинку анкеты.</b>',
             reply_markup=my_profiles_edit_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
@@ -1961,7 +1963,7 @@ async def my_profiles_edit_field_handler(
         await state.update_data(edit_field=field)
         uid_example = '12345767890' if active_game == GameCode.MLBB else '712345678'
         prompt = await callback.message.answer(
-            f'<b>🆔 Отправьте UID из игры:</b>\n\nПример: <code>{uid_example}</code>',
+            f'<b>🆔 Отправь UID из игры:</b>\n\nПример: <code>{uid_example}</code>',
             reply_markup=my_profiles_edit_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
@@ -1972,7 +1974,7 @@ async def my_profiles_edit_field_handler(
             await state.set_state(ProfilesSectionStates.edit_waiting_rank)
             await state.update_data(edit_field=field)
             prompt = await callback.message.answer(
-                '🎖 <b>Выберите новый ранг:</b>',
+                '🎖 <b>Выбери новый ранг:</b>',
                 reply_markup=my_profiles_mlbb_rank_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL),
             )
             await _remember_prompt_message(state, prompt)
@@ -1981,22 +1983,22 @@ async def my_profiles_edit_field_handler(
             await state.set_state(ProfilesSectionStates.edit_waiting_rank)
             await state.update_data(edit_field=field)
             prompt = await callback.message.answer(
-                '🎖 <b>Выберите новый ранг:</b>',
+                '🎖 <b>Выбери новый ранг:</b>',
                 reply_markup=my_profiles_pubg_rank_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL),
             )
             await _remember_prompt_message(state, prompt)
             return
-        await callback.message.answer('Для этой анкеты поля ранга нет.')
+        await callback.message.answer('У этой анкеты нет поля ранга.')
         return
 
     if field == 'adventure_level':
         if active_game != GameCode.GENSHIN_IMPACT:
-            await callback.message.answer('Поле недоступно для этой анкеты.')
+            await callback.message.answer('Это поле недоступно для этой анкеты.')
             return
         await state.set_state(ProfilesSectionStates.edit_waiting_genshin_level)
         await state.update_data(edit_field=field)
         prompt = await callback.message.answer(
-            '⭐ <b>Введите новый уровень приключения (1-60):</b>',
+            '⭐ <b>Введи новый уровень приключения (1-60):</b>',
             reply_markup=my_profiles_edit_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
@@ -2004,12 +2006,12 @@ async def my_profiles_edit_field_handler(
 
     if field == 'role':
         if active_game != GameCode.MLBB:
-            await callback.message.answer('Поле недоступно для этой анкеты.')
+            await callback.message.answer('Это поле недоступно для этой анкеты.')
             return
         await state.set_state(ProfilesSectionStates.edit_waiting_main_lane)
         await state.update_data(edit_field=field)
         prompt = await callback.message.answer(
-            '🛡 <b>Выберите новую основную линию:</b>',
+            '🛡 <b>Выбери новую основную линию:</b>',
             reply_markup=my_profiles_mlbb_main_lane_keyboard(
                 i18n,
                 locale,
@@ -2021,7 +2023,7 @@ async def my_profiles_edit_field_handler(
 
     if field == 'extra_lanes':
         if active_game != GameCode.MLBB:
-            await callback.message.answer('Поле недоступно для этой анкеты.')
+            await callback.message.answer('Это поле недоступно для этой анкеты.')
             return
         selected: set[MlbbLaneCode] = set()
         for raw in profile.extra_lanes or []:
@@ -2033,7 +2035,7 @@ async def my_profiles_edit_field_handler(
         await state.set_state(ProfilesSectionStates.edit_waiting_extra_lanes)
         await state.update_data(edit_field=field, edit_extra_lanes=[lane.value for lane in selected])
         prompt = await callback.message.answer(
-            '🎯 <b>Выберите дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
+            '🎯 <b>Выбери дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
             reply_markup=my_profiles_mlbb_extra_lanes_keyboard(
                 i18n,
                 locale,
@@ -2049,13 +2051,13 @@ async def my_profiles_edit_field_handler(
         await state.set_state(ProfilesSectionStates.edit_waiting_server)
         await state.update_data(edit_field=field)
         if active_game == GameCode.MLBB:
-            prompt_text = '🌍 <b>Выберите новый регион в игре:</b>'
+            prompt_text = '🌍 <b>Выбери новый регион в игре:</b>'
             keyboard = my_profiles_mlbb_server_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL)
         elif active_game == GameCode.GENSHIN_IMPACT:
-            prompt_text = '🌍 <b>Выберите новый регион:</b>'
+            prompt_text = '🌍 <b>Выбери новый регион:</b>'
             keyboard = my_profiles_genshin_region_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL)
         else:
-            await callback.message.answer('Для этой анкеты поля региона нет.')
+            await callback.message.answer('У этой анкеты нет поля региона.')
             return
         prompt = await callback.message.answer(
             prompt_text,
@@ -2068,7 +2070,7 @@ async def my_profiles_edit_field_handler(
         await state.set_state(ProfilesSectionStates.edit_waiting_about)
         await state.update_data(edit_field=field)
         prompt = await callback.message.answer(
-            '📝 <b>Введите новое описание анкеты:</b>',
+            '📝 <b>Введи новое описание анкеты:</b>',
             reply_markup=my_profiles_edit_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
@@ -2096,7 +2098,7 @@ async def my_profiles_edit_cancel_handler(callback: CallbackQuery, state: FSMCon
         return
 
     user_id, _ = await ensure_user_and_locale(callback.from_user, session)
-    await callback.answer()
+    await callback.answer('Окей, отменил 👌', show_alert=False)
     try:
         await callback.message.delete()
     except TelegramBadRequest:
@@ -2114,7 +2116,7 @@ async def my_profiles_edit_photo_handler(message: Message, state: FSMContext, se
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     photo_file_id = _message_image_file_id(message)
     if photo_file_id is None:
-        notice = await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_hide_notice_keyboard())
+        notice = await message.answer('Отправь изображение.', reply_markup=my_profiles_hide_notice_keyboard())
         await _remember_temp_notice(state, notice)
         return
     data = await state.get_data()
@@ -2138,7 +2140,7 @@ async def my_profiles_edit_photo_handler(message: Message, state: FSMContext, se
 
 @router.message(StateFilter(ProfilesSectionStates.edit_waiting_photo))
 async def my_profiles_edit_photo_invalid_handler(message: Message, state: FSMContext) -> None:
-    notice = await message.answer('Пожалуйста, отправьте изображение.', reply_markup=my_profiles_hide_notice_keyboard())
+    notice = await message.answer('Отправь изображение.', reply_markup=my_profiles_hide_notice_keyboard())
     await _remember_temp_notice(state, notice)
 
 
@@ -2162,7 +2164,7 @@ async def my_profiles_edit_id_handler(message: Message, state: FSMContext, sessi
         sample = '51234567890'
     if not valid:
         notice = await message.answer(
-            f'❌ <b>Неверный формат UID.</b>\n\nОтправьте только цифры.\nПример: <code>{sample}</code>',
+            f'❌ <b>Неверный формат UID.</b>\n\nОтправь только цифры.\nПример: <code>{sample}</code>',
             reply_markup=my_profiles_hide_notice_keyboard(),
         )
         await _remember_temp_notice(state, notice)
@@ -2173,7 +2175,7 @@ async def my_profiles_edit_id_handler(message: Message, state: FSMContext, sessi
         exclude_owner_id=user_id,
     ):
         notice = await message.answer(
-            '⚠️ Такой UID уже используется.\nВведите другой UID.',
+            '⚠️ Такой UID уже используется.\nВведи другой UID.',
             reply_markup=my_profiles_hide_notice_keyboard(),
         )
         await _remember_temp_notice(state, notice)
@@ -2238,7 +2240,7 @@ async def my_profiles_edit_rank_handler(callback: CallbackQuery, state: FSMConte
         await state.update_data(edit_field='rank')
         await _delete_prompt_by_ref(state, callback.message)
         prompt = await callback.message.answer(
-            '⭐ <b>Введите количество звезд (только число):</b>',
+            '⭐ <b>Введи количество звезд (только число):</b>',
             reply_markup=my_profiles_edit_cancel_keyboard(),
         )
         await _remember_prompt_message(state, prompt)
@@ -2260,7 +2262,7 @@ async def my_profiles_edit_rank_handler(callback: CallbackQuery, state: FSMConte
 
 @router.message(StateFilter(ProfilesSectionStates.edit_waiting_rank))
 async def my_profiles_edit_rank_invalid_handler(message: Message, state: FSMContext) -> None:
-    notice = await message.answer('Выберите ранг кнопками ниже.', reply_markup=my_profiles_hide_notice_keyboard())
+    notice = await message.answer('Выбери ранг кнопками ниже.', reply_markup=my_profiles_hide_notice_keyboard())
     await _remember_temp_notice(state, notice)
 
 
@@ -2272,7 +2274,7 @@ async def my_profiles_edit_mythic_stars_handler(message: Message, state: FSMCont
     user_id, _ = await ensure_user_and_locale(message.from_user, session)
     raw = (message.text or '').strip()
     if not raw.isdigit():
-        notice = await message.answer('Введите количество звезд цифрами.', reply_markup=my_profiles_hide_notice_keyboard())
+        notice = await message.answer('Введи количество звезд цифрами.', reply_markup=my_profiles_hide_notice_keyboard())
         await _remember_temp_notice(state, notice)
         return
     stars = int(raw)
@@ -2370,7 +2372,7 @@ async def my_profiles_edit_extra_lane_toggle_handler(
     await state.update_data(edit_extra_lanes=[value.value for value in selected])
     await callback.answer()
     await callback.message.edit_text(
-        '🎯 <b>Выберите дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
+        '🎯 <b>Выбери дополнительные линии:</b>\n<i>Можно выбрать несколько</i>',
         reply_markup=my_profiles_mlbb_extra_lanes_keyboard(
             i18n,
             locale,
@@ -2396,7 +2398,7 @@ async def my_profiles_edit_extra_done_handler(callback: CallbackQuery, state: FS
         if lane is not None:
             extra_lanes.append(lane)
     if not extra_lanes:
-        await callback.answer('Выберите хотя бы одну дополнительную линию', show_alert=True)
+        await callback.answer('Выбери хотя бы одну дополнительную линию', show_alert=True)
         return
 
     profile = await ProfileService(session).update_mlbb_profile_fields(
@@ -2420,12 +2422,12 @@ async def my_profiles_edit_genshin_level_handler(message: Message, state: FSMCon
     data = await state.get_data()
     active_game = _active_game_from_state(data)
     if active_game != GameCode.GENSHIN_IMPACT:
-        notice = await message.answer('Поле недоступно для этой анкеты.', reply_markup=my_profiles_hide_notice_keyboard())
+        notice = await message.answer('Это поле недоступно для этой анкеты.', reply_markup=my_profiles_hide_notice_keyboard())
         await _remember_temp_notice(state, notice)
         return
     raw = (message.text or '').strip()
     if not raw.isdigit():
-        notice = await message.answer('Введите уровень цифрами от 1 до 60.', reply_markup=my_profiles_hide_notice_keyboard())
+        notice = await message.answer('Введи уровень цифрами от 1 до 60.', reply_markup=my_profiles_hide_notice_keyboard())
         await _remember_temp_notice(state, notice)
         return
     level = int(raw)
@@ -2521,12 +2523,12 @@ async def my_profiles_edit_server_invalid_handler(message: Message, state: FSMCo
     active_game = _active_game_from_state(data)
     if active_game == GameCode.GENSHIN_IMPACT:
         notice = await message.answer(
-            'Выберите регион кнопками ниже.',
+            'Выбери регион кнопками ниже.',
             reply_markup=my_profiles_genshin_region_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL),
         )
     else:
         notice = await message.answer(
-            'Выберите регион кнопками ниже.',
+            'Выбери регион кнопками ниже.',
             reply_markup=my_profiles_mlbb_server_keyboard(cancel_callback=CB_MY_PROFILES_EDIT_CANCEL),
         )
     await _remember_temp_notice(state, notice)
@@ -2589,7 +2591,7 @@ async def my_profiles_delete_ask_handler(callback: CallbackQuery, state: FSMCont
         callback.message,
         caption=(
             '⚠️ <b>Удаление анкеты</b>\n\n'
-            f'Вы уверены, что хотите удалить анкету <b>{game_title}</b>?'
+            f'❗ Ты уверен, что хочешь удалить анкету <b>{game_title}</b>?'
         ),
         reply_markup=my_profiles_delete_confirm_keyboard(),
         photo_file_id=MY_PROFILES_DELETE_IMAGE_FILE_ID,
@@ -2607,13 +2609,13 @@ async def my_profiles_delete_cancel_handler(callback: CallbackQuery, state: FSMC
     if isinstance(game_raw, str):
         try:
             game = GameCode(game_raw)
-            await callback.answer()
+            await callback.answer('Окей, отменил 👌', show_alert=False)
             await _render_profile_card(message=callback.message, state=state, user_id=user_id, game=game, session=session)
             return
         except ValueError:
             pass
 
-    await callback.answer()
+    await callback.answer('Окей, отменил 👌', show_alert=False)
     await _render_dashboard(message=callback.message, state=state, user_id=user_id, session=session, use_edit=True)
 
 

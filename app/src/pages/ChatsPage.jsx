@@ -135,14 +135,14 @@ export function ChatsPage({ userId }) {
               disabled={(chatsPayload.page || 1) <= 1}
               onClick={() => loadChats((chatsPayload.page || 1) - 1)}
             >
-              ⬅
+              {'<'}
             </button>
             <span>Стр. {chatsPayload.page || 1}/{chatsPayload.total_pages || 1}</span>
             <button
               disabled={(chatsPayload.page || 1) >= (chatsPayload.total_pages || 1)}
               onClick={() => loadChats((chatsPayload.page || 1) + 1)}
             >
-              ⮕
+              {'>'}
             </button>
           </div>
         </div>
@@ -166,13 +166,13 @@ export function ChatsPage({ userId }) {
                   disabled={!messagesPayload.has_older}
                   onClick={() => openChat(selectedChatId, (messagesPayload.page || 1) + 1)}
                 >
-                  Дальше ⮕
+                  Дальше {'>'}
                 </button>
                 <button
                   disabled={!messagesPayload.has_newer}
                   onClick={() => openChat(selectedChatId, (messagesPayload.page || 1) - 1)}
                 >
-                  ⬅ Назад
+                  {'<'} Назад
                 </button>
               </div>
               <div className="form-inline">

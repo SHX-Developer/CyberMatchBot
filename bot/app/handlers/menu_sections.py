@@ -1,5 +1,8 @@
+import re
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +15,6 @@ from app.constants import (
     ACTIVITY_SUBSCRIBERS_IMAGE_FILE_ID,
     ACTIVITY_SUBSCRIPTIONS_IMAGE_FILE_ID,
     MAIN_MENU_IMAGE_FILE_ID,
-    BTN_ACTIVITY_TEXTS,
     BTN_BACK,
     BTN_CREATE_PROFILE,
     CB_ACTIVITY_BACK,
@@ -20,21 +22,30 @@ from app.constants import (
     CB_ACTIVITY_PAGE_PREFIX,
     CB_ACTIVITY_SECTION_PREFIX,
 )
-from app.handlers.context import ensure_user_and_locale
+from app.handlers.context import ensure_user_and_locale, main_menu_keyboard_with_counters, unread_activity_counters
 from app.keyboards import (
     activity_open_keyboard,
     activity_section_keyboard,
     back_keyboard,
     language_keyboard,
-    main_menu_keyboard,
 )
 from app.locales import LocalizationManager
-from app.services import InteractionService
+from app.services import InteractionService, UserService
 
 router = Router(name='menu_sections')
 
 ACTIVITY_SECTIONS = {'subscriptions', 'subscribers', 'likes', 'liked_by', 'friends'}
 ACTIVITY_PAGE_SIZE = 10
+ACTIVITY_BUTTON_BASES = ('активность', 'activity', 'faollik')
+
+
+def _is_activity_menu_button(text: str | None) -> bool:
+    if not isinstance(text, str):
+        return False
+    normalized = text.strip()
+    normalized = re.sub(r'\s*\(\d+\)\s*$', '', normalized)
+    normalized = re.sub(r'^[^\wа-яА-Я]+', '', normalized).strip().lower()
+    return normalized in ACTIVITY_BUTTON_BASES
 
 
 async def _require_locale(message: Message, session: AsyncSession, i18n: LocalizationManager) -> tuple[int, str] | None:
@@ -49,12 +60,24 @@ async def _require_locale(message: Message, session: AsyncSession, i18n: Localiz
     return user_id, locale
 
 
-async def _show_main_menu(message: Message, locale: str, i18n: LocalizationManager) -> None:
+async def _show_main_menu(
+    message: Message,
+    *,
+    user_id: int,
+    locale: str,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
     await message.answer_photo(
         photo=MAIN_MENU_IMAGE_FILE_ID,
         caption=i18n.t(locale, 'start.welcome'),
         parse_mode='HTML',
-        reply_markup=main_menu_keyboard(i18n, locale),
+        reply_markup=await main_menu_keyboard_with_counters(
+            user_id=user_id,
+            locale=locale,
+            session=session,
+            i18n=i18n,
+        ),
     )
 
 
@@ -168,12 +191,18 @@ async def _section_payload(
 async def _render_activity_main(
     *,
     message: Message,
+    user_id: int,
     locale: str,
     i18n: LocalizationManager,
+    session: AsyncSession,
     use_edit: bool,
 ) -> None:
     caption = i18n.t(locale, 'activity.card')
-    keyboard = activity_open_keyboard(i18n, locale)
+    keyboard = activity_open_keyboard(
+        i18n,
+        locale,
+        counters=await unread_activity_counters(user_id, session),
+    )
     if not use_edit:
         await message.answer_photo(photo=ACTIVITY_IMAGE_FILE_ID, caption=caption, parse_mode='HTML', reply_markup=keyboard)
         return
@@ -239,11 +268,18 @@ async def back_to_main_menu_handler(
     if payload is None:
         return
 
-    _, locale = payload
-    await _show_main_menu(message, locale, i18n)
+    user_id, locale = payload
+    await _show_main_menu(
+        message,
+        user_id=user_id,
+        locale=locale,
+        session=session,
+        i18n=i18n,
+    )
 
 
-@router.message(F.text.in_(BTN_ACTIVITY_TEXTS))
+@router.message(F.text.func(_is_activity_menu_button))
+@router.message(Command('actions'))
 async def activity_menu_handler(
     message: Message,
     state: FSMContext,
@@ -255,8 +291,15 @@ async def activity_menu_handler(
     if payload is None:
         return
 
-    _, locale = payload
-    await _render_activity_main(message=message, locale=locale, i18n=i18n, use_edit=False)
+    user_id, locale = payload
+    await _render_activity_main(
+        message=message,
+        user_id=user_id,
+        locale=locale,
+        i18n=i18n,
+        session=session,
+        use_edit=False,
+    )
 
 
 @router.callback_query(F.data == CB_ACTIVITY_OPEN)
@@ -270,14 +313,21 @@ async def activity_open_callback(
     if callback.from_user is None or not isinstance(callback.message, Message):
         return
 
-    _, locale = await ensure_user_and_locale(callback.from_user, session)
+    user_id, locale = await ensure_user_and_locale(callback.from_user, session)
     await state.clear()
     if locale is None:
         await callback.answer()
         return
 
     await callback.answer()
-    await _render_activity_main(message=callback.message, locale=locale, i18n=i18n, use_edit=True)
+    await _render_activity_main(
+        message=callback.message,
+        user_id=user_id,
+        locale=locale,
+        i18n=i18n,
+        session=session,
+        use_edit=True,
+    )
 
 
 @router.callback_query(F.data.startswith(CB_ACTIVITY_SECTION_PREFIX))
@@ -306,6 +356,7 @@ async def activity_section_callback(
         await callback.answer(i18n.t(locale, 'error.unknown'), show_alert=True)
         return
 
+    await UserService(session).mark_activity_section_seen(user_id, section)
     await callback.answer()
     await _render_activity_section(
         message=callback.message,
