@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import LanguageCode
+from app.database import LanguageCode, UserGenderCode
 from app.models import User, UserStats
 
 
@@ -68,6 +68,14 @@ class UserRepository:
         if user is None:
             return None
         user.full_name = full_name
+        await self.session.flush()
+        return user
+
+    async def set_gender(self, user_id: int, gender: UserGenderCode) -> User | None:
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return None
+        user.gender = gender
         await self.session.flush()
         return user
 

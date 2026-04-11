@@ -43,7 +43,7 @@ from app.constants import (
     MY_PROFILES_DELETE_IMAGE_FILE_ID,
     MY_PROFILES_IMAGE_FILE_ID,
 )
-from app.constants.moderation import MODERATION_REVIEW_CHAT_ID, is_moderator
+from app.constants.moderation import MODERATION_REVIEW_CHAT_ID, is_moderation_chat, is_moderator
 from app.database import GameCode, MlbbLaneCode
 from app.handlers.context import ensure_user_and_locale
 from app.handlers.states import ProfilesSectionStates
@@ -2665,7 +2665,7 @@ async def _render_moderation_profile_message(
 async def moderator_random_profile_search_handler(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         return
-    if message.chat.id != MODERATION_REVIEW_CHAT_ID:
+    if not is_moderation_chat(message.chat.id):
         return
     if not _is_admin(message.from_user.id):
         await message.answer('Нет доступа к модераторским командам.')

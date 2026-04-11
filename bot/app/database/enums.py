@@ -7,6 +7,12 @@ class LanguageCode(str, Enum):
     UZ = 'uz'
 
 
+class UserGenderCode(str, Enum):
+    NOT_SPECIFIED = 'not_specified'
+    MALE = 'male'
+    FEMALE = 'female'
+
+
 class GameCode(str, Enum):
     MLBB = 'mlbb'
     GENSHIN_IMPACT = 'genshin_impact'

@@ -26,7 +26,9 @@ from app.constants import (
     CB_PROFILE_EDIT_AVATAR,
     CB_PROFILE_EDIT_CANCEL,
     CB_PROFILE_EDIT_FULL_NAME,
+    CB_PROFILE_EDIT_GENDER,
     CB_PROFILE_EDIT_USERNAME,
+    CB_PROFILE_GENDER_SET_PREFIX,
     CB_PROFILE_LANG_SET_PREFIX,
     CB_PROFILE_LANGUAGE,
     CB_PROFILE_LAST_ACTIVITY,
@@ -40,7 +42,7 @@ from app.constants import (
     CB_PROFILE_STATS,
     CB_PROFILE_STATS_REFRESH,
 )
-from app.database import LanguageCode
+from app.database import LanguageCode, UserGenderCode
 from app.handlers.context import ensure_user_and_locale
 from app.handlers.states import ProfileStates
 from app.keyboards import (
@@ -48,6 +50,7 @@ from app.keyboards import (
     profile_actions_keyboard,
     profile_edit_cancel_keyboard,
     profile_edit_keyboard,
+    profile_gender_keyboard,
     profile_last_activity_keyboard,
     profile_language_keyboard,
     profile_notifications_keyboard,
@@ -66,6 +69,18 @@ PROFILE_STATS_IMAGE_PATH = ASSETS_DIR / 'statistics.png'
 PROFILE_NOTIFICATIONS_IMAGE_PATH = ASSETS_DIR / 'notifications.png'
 PROFILE_LANGUAGE_IMAGE_PATH = ASSETS_DIR / 'language.png'
 FULL_NAME_MAX_LENGTH = 70
+NICKNAME_PATTERN = re.compile(r'^[a-z]{4,}$')
+
+
+def _gender_label(gender: UserGenderCode | str | None, *, locale: str, i18n: LocalizationManager) -> str:
+    value = getattr(gender, 'value', gender)
+    mapping = {
+        'male': 'profile.gender.male',
+        'female': 'profile.gender.female',
+        'not_specified': 'profile.gender.not_specified',
+    }
+    key = mapping.get(str(value), 'profile.gender.not_specified')
+    return i18n.t(locale, key)
 
 
 async def _require_locale(message: Message, session: AsyncSession, i18n: LocalizationManager) -> tuple[int, str] | None:
@@ -155,6 +170,7 @@ def _profile_caption(*, i18n: LocalizationManager, locale: str, payload: dict[st
         user_id=user.id,
         username=_username_value(user.username, locale, i18n),
         full_name=_full_name_value(user.full_name, locale, i18n),
+        gender=_gender_label(getattr(user, 'gender', None), locale=locale, i18n=i18n),
         profiles_count=int(payload.get('profiles_count', 0) or 0),
         likes=likes,
         followers=followers,
@@ -639,10 +655,75 @@ async def profile_edit_full_name_handler(
     await state.set_state(ProfileStates.waiting_for_full_name)
     await callback.answer()
     prompt = await callback.message.answer(
-        '✏️ Введи новый ник:',
+        i18n.t(locale, 'profile.edit.full_name.prompt'),
         reply_markup=profile_edit_cancel_keyboard(i18n, locale),
     )
     await _remember_prompt_message(state, prompt)
+    await _remember_message(state, callback.message)
+
+
+@router.callback_query(F.data == CB_PROFILE_EDIT_GENDER)
+async def profile_edit_gender_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+
+    user_id, locale = await ensure_user_and_locale(callback.from_user, session)
+    if locale is None:
+        await callback.answer()
+        return
+
+    await state.clear()
+    payload = await UserService(session).get_profile_stats(user_id)
+    user = payload.get('user')
+    current_gender = getattr(getattr(user, 'gender', None), 'value', None) if user is not None else None
+    if not isinstance(current_gender, str):
+        current_gender = UserGenderCode.NOT_SPECIFIED.value
+
+    await callback.answer()
+    await _edit_profile_message(
+        bot_message=callback.message,
+        photo=PROFILE_EDIT_IMAGE_FILE_ID,
+        caption=i18n.t(locale, 'profile.gender.choose'),
+        reply_markup=profile_gender_keyboard(i18n, locale, current_gender=current_gender),
+    )
+    await _remember_message(state, callback.message)
+
+
+@router.callback_query(F.data.startswith(CB_PROFILE_GENDER_SET_PREFIX))
+async def profile_set_gender_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    i18n: LocalizationManager,
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+
+    user_id, locale = await ensure_user_and_locale(callback.from_user, session)
+    if locale is None:
+        await callback.answer()
+        return
+
+    raw_gender = (callback.data or '').replace(CB_PROFILE_GENDER_SET_PREFIX, '', 1).strip()
+    try:
+        gender = UserGenderCode(raw_gender)
+    except ValueError:
+        await callback.answer(i18n.t(locale, 'error.unknown'), show_alert=True)
+        return
+
+    await UserService(session).set_gender(user_id, gender)
+    await callback.answer(i18n.t(locale, 'profile.gender.updated'))
+    await _edit_profile_message(
+        bot_message=callback.message,
+        photo=PROFILE_EDIT_IMAGE_FILE_ID,
+        caption=i18n.t(locale, 'profile.gender.choose'),
+        reply_markup=profile_gender_keyboard(i18n, locale, current_gender=gender.value),
+    )
     await _remember_message(state, callback.message)
 
 
@@ -762,7 +843,7 @@ async def profile_full_name_save_handler(
         return
 
     user_id, locale = payload
-    full_name_raw = (message.text or '').strip()
+    full_name_raw = (message.text or '').strip().lower()
     if not full_name_raw:
         await message.answer(i18n.t(locale, 'profile.edit.full_name.empty'))
         return
@@ -771,8 +852,16 @@ async def profile_full_name_save_handler(
         await message.answer(i18n.t(locale, 'profile.edit.full_name.too_long', max_len=FULL_NAME_MAX_LENGTH))
         return
 
-    normalized_full_name = full_name_raw.lower()
-    await UserService(session).set_full_name(user_id, normalized_full_name)
+    if not NICKNAME_PATTERN.fullmatch(full_name_raw):
+        await message.answer(i18n.t(locale, 'onboarding.nickname.invalid'), parse_mode='HTML')
+        return
+
+    users = UserService(session)
+    if await users.nickname_exists(full_name_raw, exclude_user_id=user_id):
+        await message.answer(i18n.t(locale, 'onboarding.nickname.taken'))
+        return
+
+    await users.set_full_name(user_id, full_name_raw)
     await _delete_prompt_message(message, state)
     try:
         await message.delete()

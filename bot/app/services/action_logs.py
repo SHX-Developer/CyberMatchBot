@@ -3,7 +3,7 @@ from html import escape
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants.moderation import ACTION_LOG_CHAT_ID, MODERATION_REVIEW_CHAT_ID
+from app.constants.moderation import ACTION_LOG_CHAT_ID, moderation_chat_target_ids
 from app.database import GameCode
 from app.services.users import UserService
 
@@ -65,6 +65,12 @@ async def _send_log(bot: Bot, text: str) -> None:
     await _send_log_to_chat(bot, ACTION_LOG_CHAT_ID, text)
 
 
+async def _send_log_to_moderation_and_logs(bot: Bot, text: str) -> None:
+    await _send_log_to_chat(bot, ACTION_LOG_CHAT_ID, text)
+    for chat_id in moderation_chat_target_ids():
+        await _send_log_to_chat(bot, chat_id, text)
+
+
 async def log_registration_action(*, bot: Bot, session: AsyncSession, user_id: int) -> None:
     users = UserService(session)
     user = await users.get_user(user_id)
@@ -73,7 +79,8 @@ async def log_registration_action(*, bot: Bot, session: AsyncSession, user_id: i
         f"{_person_block('Кто зарегистрировался', user_id=user_id, user=user)}"
     )
     await _send_log(bot, text)
-    await _send_log_to_chat(bot, MODERATION_REVIEW_CHAT_ID, text)
+    for chat_id in moderation_chat_target_ids():
+        await _send_log_to_chat(bot, chat_id, text)
 
 
 async def log_like_action(
@@ -138,5 +145,27 @@ async def log_message_action(
             f"{_person_block('Кто написал', user_id=from_user_id, user=from_user)}\n\n"
             f"{_person_block('Кому написал', user_id=to_user_id, user=to_user)}\n\n"
             f"📝 Текст:\n<code>{escape(text.strip())}</code>"
+        ),
+    )
+
+
+async def log_mutual_like_action(
+    *,
+    bot: Bot,
+    session: AsyncSession,
+    user_a_id: int,
+    user_b_id: int,
+    game: GameCode,
+) -> None:
+    users = UserService(session)
+    user_a = await users.get_user(user_a_id)
+    user_b = await users.get_user(user_b_id)
+    await _send_log_to_moderation_and_logs(
+        bot,
+        (
+            "💞 <b>Взаимный лайк</b>\n\n"
+            f"🎮 Игра: <b>{escape(_game_title(game))}</b>\n\n"
+            f"{_person_block('Пользователь 1', user_id=user_a_id, user=user_a)}\n\n"
+            f"{_person_block('Пользователь 2', user_id=user_b_id, user=user_b)}"
         ),
     )

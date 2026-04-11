@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, Boolean, DateTime, Enum, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, LanguageCode
+from app.database import Base, LanguageCode, UserGenderCode
 
 
 class User(Base):
@@ -26,6 +26,15 @@ class User(Base):
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
         nullable=True,
+    )
+    gender: Mapped[UserGenderCode] = mapped_column(
+        Enum(
+            UserGenderCode,
+            name='user_gender_enum',
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        server_default=text("'not_specified'"),
     )
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

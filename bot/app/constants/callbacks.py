@@ -15,10 +15,12 @@ CB_PROFILE_NOTIF_MESSAGES = 'profile:notif:messages'
 
 CB_PROFILE_EDIT_AVATAR = 'profile:edit:avatar'
 CB_PROFILE_EDIT_FULL_NAME = 'profile:edit:full_name'
+CB_PROFILE_EDIT_GENDER = 'profile:edit:gender'
 CB_PROFILE_EDIT_USERNAME = 'profile:edit:username'
 CB_PROFILE_EDIT_CANCEL = 'profile:edit:cancel'
 
 CB_PROFILE_LANG_SET_PREFIX = 'profile:lang:set:'
+CB_PROFILE_GENDER_SET_PREFIX = 'profile:gender:set:'
 
 CB_MY_PROFILES_GAME_PREFIX = 'profiles:game:'
 CB_MY_PROFILES_BACK = 'profiles:back'

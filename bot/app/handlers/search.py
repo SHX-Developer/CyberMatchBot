@@ -55,7 +55,12 @@ from app.keyboards import (
 )
 from app.locales import LocalizationManager
 from app.services import InteractionService, ProfileService, UserService
-from app.services.action_logs import log_like_action, log_message_action, log_subscription_action
+from app.services.action_logs import (
+    log_like_action,
+    log_message_action,
+    log_mutual_like_action,
+    log_subscription_action,
+)
 from app.utils import format_datetime
 
 router = Router(name='search')
@@ -125,6 +130,16 @@ def _full_name(user) -> str:
 
 def _username(user) -> str:
     return f'@{user.username}' if user.username else 'Не указан'
+
+
+def _gender_label(user) -> str:
+    raw = getattr(getattr(user, 'gender', None), 'value', getattr(user, 'gender', None))
+    mapping = {
+        'male': 'Мужской',
+        'female': 'Женский',
+        'not_specified': 'Не указано',
+    }
+    return mapping.get(str(raw), 'Не указано')
 
 
 def _public_game_id(raw_value: str | None) -> str:
@@ -243,6 +258,7 @@ def _profile_text(payload: dict[str, object], *, locale: str) -> str:
         friends = int(getattr(stats, 'friends_count', 0) or 0) if stats is not None else 0
     return (
         f"<b>👤 {escape(_full_name(user))}</b>\n\n"
+        f"<b>⚧ Пол:</b> {escape(_gender_label(user))}\n"
         f"<b>❤️ Лайки:</b> {likes}\n"
         f"<b>👥 Подписчики:</b> {followers}\n"
         f"<b>⭐ Подписки:</b> {subscriptions}\n"
@@ -669,6 +685,13 @@ async def search_like(
         )
 
     if await interactions.is_mutual_like(from_user_id, to_user_id, game):
+        await log_mutual_like_action(
+            bot=callback.bot,
+            session=session,
+            user_a_id=from_user_id,
+            user_b_id=to_user_id,
+            game=game,
+        )
         users = UserService(session)
         first = await users.get_user(from_user_id)
         second = await users.get_user(to_user_id)

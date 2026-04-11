@@ -14,7 +14,7 @@ from app.constants import (
     CB_ADMIN_PANEL_REFRESH,
     CB_ADMIN_PANEL_STATS,
 )
-from app.constants.moderation import MODERATION_REVIEW_CHAT_ID, is_moderator
+from app.constants.moderation import is_moderation_chat, is_moderator
 from app.database import LanguageCode
 from app.keyboards import admin_panel_keyboard, admin_stats_keyboard
 from app.models import PlayerProfile, User, UserLike, UserSubscription
@@ -202,7 +202,7 @@ async def admin_panel_open(message: Message) -> None:
 async def statistics_in_moderation_group(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         return
-    if message.chat.id != MODERATION_REVIEW_CHAT_ID:
+    if not is_moderation_chat(message.chat.id):
         return
     if not _is_admin(message.from_user.id):
         await message.answer('Нет доступа к общей статистике.')

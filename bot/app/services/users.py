@@ -3,7 +3,7 @@ from datetime import datetime
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import LanguageCode
+from app.database import LanguageCode, UserGenderCode
 from app.models import User, UserStats
 from app.repositories import InteractionRepository, ProfileRepository, UserRepository
 
@@ -59,6 +59,9 @@ class UserService:
 
     async def set_full_name(self, user_id: int, full_name: str) -> User | None:
         return await self.user_repo.set_full_name(user_id, full_name)
+
+    async def set_gender(self, user_id: int, gender: UserGenderCode) -> User | None:
+        return await self.user_repo.set_gender(user_id, gender)
 
     async def nickname_exists(self, nickname: str, *, exclude_user_id: int | None = None) -> bool:
         return await self.user_repo.nickname_exists(nickname, exclude_user_id=exclude_user_id)

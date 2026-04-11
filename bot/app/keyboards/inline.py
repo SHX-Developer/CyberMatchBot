@@ -38,7 +38,9 @@ from app.constants import (
     CB_PROFILE_EDIT_AVATAR,
     CB_PROFILE_EDIT_CANCEL,
     CB_PROFILE_EDIT_FULL_NAME,
+    CB_PROFILE_EDIT_GENDER,
     CB_PROFILE_EDIT_USERNAME,
+    CB_PROFILE_GENDER_SET_PREFIX,
     CB_PROFILE_LANG_SET_PREFIX,
     CB_PROFILE_LANGUAGE,
     CB_PROFILE_LAST_ACTIVITY,
@@ -294,9 +296,24 @@ def profile_edit_keyboard(i18n: LocalizationManager, locale: str) -> InlineKeybo
     builder = InlineKeyboardBuilder()
     builder.button(text=i18n.t(locale, 'action.edit_avatar'), callback_data=CB_PROFILE_EDIT_AVATAR)
     builder.button(text=i18n.t(locale, 'action.edit_nickname'), callback_data=CB_PROFILE_EDIT_FULL_NAME)
+    builder.button(text=i18n.t(locale, 'action.edit_gender'), callback_data=CB_PROFILE_EDIT_GENDER)
     builder.button(text=i18n.t(locale, 'action.edit_username'), callback_data=CB_PROFILE_EDIT_USERNAME)
     builder.button(text=i18n.t(locale, 'action.back_to_profile'), callback_data=CB_PROFILE_BACK)
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def profile_gender_keyboard(i18n: LocalizationManager, locale: str, *, current_gender: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for value, key in (
+        ('not_specified', 'profile.gender.not_specified'),
+        ('male', 'profile.gender.male'),
+        ('female', 'profile.gender.female'),
+    ):
+        prefix = '✅ ' if value == current_gender else ''
+        builder.button(text=f'{prefix}{i18n.t(locale, key)}', callback_data=f'{CB_PROFILE_GENDER_SET_PREFIX}{value}')
+    builder.button(text=i18n.t(locale, 'action.back_to_edit'), callback_data=CB_PROFILE_EDIT)
+    builder.adjust(1, 1, 1, 1)
     return builder.as_markup()
 
 
