@@ -3,7 +3,7 @@ from html import escape
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants.moderation import ACTION_LOG_CHAT_ID
+from app.constants.moderation import ACTION_LOG_CHAT_ID, MODERATION_REVIEW_CHAT_ID
 from app.database import GameCode
 from app.services.users import UserService
 
@@ -50,10 +50,10 @@ def _person_block(title: str, *, user_id: int, user) -> str:
     )
 
 
-async def _send_log(bot: Bot, text: str) -> None:
+async def _send_log_to_chat(bot: Bot, chat_id: int, text: str) -> None:
     try:
         await bot.send_message(
-            chat_id=ACTION_LOG_CHAT_ID,
+            chat_id=chat_id,
             text=text,
             parse_mode='HTML',
         )
@@ -61,16 +61,19 @@ async def _send_log(bot: Bot, text: str) -> None:
         pass
 
 
+async def _send_log(bot: Bot, text: str) -> None:
+    await _send_log_to_chat(bot, ACTION_LOG_CHAT_ID, text)
+
+
 async def log_registration_action(*, bot: Bot, session: AsyncSession, user_id: int) -> None:
     users = UserService(session)
     user = await users.get_user(user_id)
-    await _send_log(
-        bot,
-        (
-            "🆕 <b>Регистрация пользователя</b>\n\n"
-            f"{_person_block('Кто зарегистрировался', user_id=user_id, user=user)}"
-        ),
+    text = (
+        "🆕 <b>Регистрация пользователя</b>\n\n"
+        f"{_person_block('Кто зарегистрировался', user_id=user_id, user=user)}"
     )
+    await _send_log(bot, text)
+    await _send_log_to_chat(bot, MODERATION_REVIEW_CHAT_ID, text)
 
 
 async def log_like_action(
