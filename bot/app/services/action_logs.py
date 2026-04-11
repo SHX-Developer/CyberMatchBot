@@ -65,12 +65,6 @@ async def _send_log(bot: Bot, text: str) -> None:
     await _send_log_to_chat(bot, ACTION_LOG_CHAT_ID, text)
 
 
-async def _send_log_to_moderation_and_logs(bot: Bot, text: str) -> None:
-    await _send_log_to_chat(bot, ACTION_LOG_CHAT_ID, text)
-    for chat_id in moderation_chat_target_ids():
-        await _send_log_to_chat(bot, chat_id, text)
-
-
 async def log_registration_action(*, bot: Bot, session: AsyncSession, user_id: int) -> None:
     users = UserService(session)
     user = await users.get_user(user_id)
@@ -138,7 +132,7 @@ async def log_message_action(
     users = UserService(session)
     from_user = await users.get_user(from_user_id)
     to_user = await users.get_user(to_user_id)
-    await _send_log_to_moderation_and_logs(
+    await _send_log(
         bot,
         (
             "💬 <b>Сообщение</b>\n\n"
@@ -160,7 +154,7 @@ async def log_mutual_like_action(
     users = UserService(session)
     user_a = await users.get_user(user_a_id)
     user_b = await users.get_user(user_b_id)
-    await _send_log_to_moderation_and_logs(
+    await _send_log(
         bot,
         (
             "💞 <b>Взаимный лайк</b>\n\n"
