@@ -43,7 +43,7 @@ from app.constants import (
     MY_PROFILES_DELETE_IMAGE_FILE_ID,
     MY_PROFILES_IMAGE_FILE_ID,
 )
-from app.constants.moderation import MODERATION_REVIEW_CHAT_ID, is_moderation_chat, is_moderator
+from app.constants.moderation import MODERATION_REVIEW_CHAT_ID, is_moderation_chat, is_moderator, moderation_chat_target_ids
 from app.database import GameCode, MlbbLaneCode
 from app.handlers.context import ensure_user_and_locale
 from app.handlers.states import ProfilesSectionStates
@@ -330,20 +330,24 @@ async def _send_profile_to_admin_review(
     owner,
     event_type: str,
 ) -> None:
-    try:
-        await source_message.bot.send_photo(
-            chat_id=MODERATION_REVIEW_CHAT_ID,
-            photo=_photo_media(profile.profile_image_file_id),
-            caption=_admin_profile_caption(profile, owner, event_type=event_type),
-            parse_mode='HTML',
-            reply_markup=admin_profile_review_keyboard(
-                profile_id=profile.id,
-                owner_id=profile.owner_id,
-                game=profile.game,
-            ),
-        )
-    except Exception:
-        pass
+    target_ids = moderation_chat_target_ids()
+    if not target_ids:
+        target_ids = (MODERATION_REVIEW_CHAT_ID,)
+    for chat_id in target_ids:
+        try:
+            await source_message.bot.send_photo(
+                chat_id=chat_id,
+                photo=_photo_media(profile.profile_image_file_id),
+                caption=_admin_profile_caption(profile, owner, event_type=event_type),
+                parse_mode='HTML',
+                reply_markup=admin_profile_review_keyboard(
+                    profile_id=profile.id,
+                    owner_id=profile.owner_id,
+                    game=profile.game,
+                ),
+            )
+        except Exception:
+            pass
 
 
 def _parse_lane(raw: str) -> MlbbLaneCode | None:

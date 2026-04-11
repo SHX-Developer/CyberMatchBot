@@ -138,7 +138,7 @@ async def log_message_action(
     users = UserService(session)
     from_user = await users.get_user(from_user_id)
     to_user = await users.get_user(to_user_id)
-    await _send_log(
+    await _send_log_to_moderation_and_logs(
         bot,
         (
             "💬 <b>Сообщение</b>\n\n"
