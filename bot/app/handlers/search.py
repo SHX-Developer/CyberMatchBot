@@ -55,6 +55,7 @@ from app.keyboards import (
 )
 from app.locales import LocalizationManager
 from app.services import InteractionService, ProfileService, UserService
+from app.services.action_logs import log_like_action, log_message_action, log_subscription_action
 from app.utils import format_datetime
 
 router = Router(name='search')
@@ -649,6 +650,13 @@ async def search_like(
         return
 
     await callback.answer('❤️ Лайк отправлен', show_alert=False)
+    await log_like_action(
+        bot=callback.bot,
+        session=session,
+        from_user_id=from_user_id,
+        to_user_id=to_user_id,
+        game=game,
+    )
     to_user_settings = await UserService(session).notification_settings(to_user_id)
     if to_user_settings.get('likes', True):
         from_user = await UserService(session).get_user(from_user_id)
@@ -795,6 +803,13 @@ async def search_toggle_sub(
     interactions = InteractionService(session)
     subscribed_now = await interactions.toggle_subscription(follower_id, target_id)
     await callback.answer('Подписка активна ⭐' if subscribed_now else 'Подписка отключена')
+    await log_subscription_action(
+        bot=callback.bot,
+        session=session,
+        follower_user_id=follower_id,
+        followed_user_id=target_id,
+        subscribed_now=subscribed_now,
+    )
 
     data = await state.get_data()
     current_target = data.get('search_current_target_user_id')
@@ -948,6 +963,13 @@ async def search_send_message(
             reply_markup=search_message_cancel_keyboard(i18n, locale),
         )
         return
+    await log_message_action(
+        bot=message.bot,
+        session=session,
+        from_user_id=from_user_id,
+        to_user_id=target_id,
+        text=text,
+    )
     users = UserService(session)
     sender = await users.get_user(from_user_id)
     sender_name = 'Пользователь'

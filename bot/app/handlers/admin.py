@@ -14,21 +14,15 @@ from app.constants import (
     CB_ADMIN_PANEL_REFRESH,
     CB_ADMIN_PANEL_STATS,
 )
+from app.constants.moderation import MODERATION_REVIEW_CHAT_ID, is_moderator
 from app.database import LanguageCode
 from app.keyboards import admin_panel_keyboard, admin_stats_keyboard
 from app.models import PlayerProfile, User, UserLike, UserSubscription
 
 router = Router(name='admin_panel')
 
-ADMIN_USER_IDS = {
-    284929331,
-    1340041796,
-    622781320,
-}
-
-
 def _is_admin(user_id: int | None) -> bool:
-    return isinstance(user_id, int) and user_id in ADMIN_USER_IDS
+    return is_moderator(user_id)
 
 
 def _bar(value: int, max_value: int, *, width: int = 14) -> str:
@@ -201,6 +195,23 @@ async def admin_panel_open(message: Message) -> None:
         _panel_text(),
         parse_mode='HTML',
         reply_markup=admin_panel_keyboard(),
+    )
+
+
+@router.message(Command('statistics'))
+async def statistics_in_moderation_group(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        return
+    if message.chat.id != MODERATION_REVIEW_CHAT_ID:
+        return
+    if not _is_admin(message.from_user.id):
+        await message.answer('Нет доступа к общей статистике.')
+        return
+
+    await message.answer(
+        await _stats_text(session),
+        parse_mode='HTML',
+        reply_markup=admin_stats_keyboard(),
     )
 
 

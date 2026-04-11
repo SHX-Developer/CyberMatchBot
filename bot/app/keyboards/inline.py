@@ -87,9 +87,9 @@ from app.locales import LocalizationManager
 
 
 LANGUAGE_CHOICES = (
-    ('ru', 'Русский'),
-    ('en', 'English'),
-    ('uz', "O'zbekcha"),
+    ('ru', '🇷🇺 Русский'),
+    ('en', '🇬🇧 English'),
+    ('uz', "🇺🇿 O'zbekcha"),
 )
 
 PUBG_RANK_CHOICES = (
@@ -129,7 +129,7 @@ def language_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for code, title in LANGUAGE_CHOICES:
         builder.button(text=title, callback_data=f'lang:set:{code}')
-    builder.adjust(3)
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -914,9 +914,9 @@ def chat_new_message_notice_keyboard(
     user_id: int,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=i18n.t(locale, 'search.button.reply'), callback_data=f'{CB_CHATS_OPEN_CHAT_PREFIX}{chat_id}', style='primary')
+    builder.button(text=i18n.t(locale, 'search.button.reply'), callback_data=f'{CB_CHATS_OPEN_CHAT_PREFIX}{chat_id}')
     builder.button(text=i18n.t(locale, 'search.button.profile_short'), callback_data=f'{CB_SEARCH_VIEW_PROFILE_PREFIX}{user_id}:msg')
-    builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE, style='danger')
+    builder.button(text=i18n.t(locale, 'search.button.hide_message'), callback_data=CB_SEARCH_HIDE_NOTICE)
     builder.adjust(2, 1)
     return builder.as_markup()
 

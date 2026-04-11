@@ -43,6 +43,7 @@ from app.constants import (
     MY_PROFILES_DELETE_IMAGE_FILE_ID,
     MY_PROFILES_IMAGE_FILE_ID,
 )
+from app.constants.moderation import MODERATION_REVIEW_CHAT_ID, is_moderator
 from app.database import GameCode, MlbbLaneCode
 from app.handlers.context import ensure_user_and_locale
 from app.handlers.states import ProfilesSectionStates
@@ -80,13 +81,6 @@ MLBB_CREATE_EXAMPLE_IMAGE_FILE_ID = 'AgACAgIAAxkBAAILxmnWA65xAzMC1K5Vy9weS5Sh_ub
 GENSHIN_CREATE_EXAMPLE_IMAGE_FILE_ID = 'AgACAgIAAxkBAAILxGnWA41Jvu2ohW6pj4OSys1J_zOKAAJCEmsbc-uxSpyTYOSqpMjgAQADAgADbQADOwQ'
 PUBG_CREATE_EXAMPLE_IMAGE_FILE_ID = 'AgACAgIAAxkBAAILyGnWA9WK22wFoo6fMkqUpAccbjy1AAJEEmsbc-uxSgSvLgRme-SFAQADAgADbQADOwQ'
 SUPPORTED_GAMES = (GameCode.MLBB, GameCode.GENSHIN_IMPACT, GameCode.PUBG_MOBILE)
-MODERATION_REVIEW_CHAT_ID = -5122358580
-# Для добавления новых модераторов дополняйте этот набор Telegram ID.
-MODERATOR_USER_IDS = {
-    284929331,
-    1340041796,
-    622781320,
-}
 MODERATION_SEARCH_COMMANDS: dict[str, GameCode] = {
     'search_mlbb': GameCode.MLBB,
     'search_gi': GameCode.GENSHIN_IMPACT,
@@ -150,7 +144,7 @@ def _active_game_from_state(data: dict) -> GameCode:
 
 
 def _is_admin(user_id: int | None) -> bool:
-    return isinstance(user_id, int) and user_id in MODERATOR_USER_IDS
+    return is_moderator(user_id)
 
 
 def _admin_game_from_code(raw: str | None) -> GameCode | None:

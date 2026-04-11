@@ -34,6 +34,7 @@ from app.keyboards import (
 )
 from app.locales import LocalizationManager
 from app.services import ChatService, MessageService, UserService
+from app.services.action_logs import log_message_action
 from app.handlers.context import main_menu_keyboard_with_counters
 
 router = Router(name='chats')
@@ -751,6 +752,13 @@ async def chats_send_message_input(
         receiver_id=int(message_entity.to_user_id),
         chat_id=int(message_entity.chat_id),
         fallback_locale=locale,
+    )
+    await log_message_action(
+        bot=message.bot,
+        session=session,
+        from_user_id=user_id,
+        to_user_id=int(message_entity.to_user_id),
+        text=(message_entity.text or text),
     )
 
     await state.clear()

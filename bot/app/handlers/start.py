@@ -13,6 +13,7 @@ from app.keyboards import language_keyboard
 from app.locales import LocalizationManager
 from app.constants import MAIN_MENU_IMAGE_FILE_ID
 from app.services import UserService
+from app.services.action_logs import log_registration_action
 
 router = Router(name='start')
 
@@ -152,6 +153,7 @@ async def onboarding_nickname_handler(
         return
 
     await user_service.set_full_name(user_id, raw)
+    await log_registration_action(bot=message.bot, session=session, user_id=user_id)
     await state.clear()
     try:
         await message.delete()
