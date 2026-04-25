@@ -68,6 +68,7 @@ export function GameBlock({ game = 'mlbb', size = 'md', style, children }) {
 
 export function BottomNav({ active, onChange }) {
   const tabs = [
+    { id: 'home', icon: 'home', label: 'Главная' },
     { id: 'search', icon: 'search', label: 'Поиск' },
     { id: 'chats', icon: 'chat', label: 'Чаты' },
     { id: 'profiles', icon: 'controller', label: 'Анкеты' },
@@ -109,12 +110,12 @@ export function BottomNav({ active, onChange }) {
                 }}
               />
             )}
-            <Icon name={t.icon} size={22} />
+            <Icon name={t.icon} size={20} />
             <span
               style={{
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: 700,
-                letterSpacing: 0.2,
+                letterSpacing: 0.15,
                 textTransform: 'uppercase',
               }}
             >
@@ -128,10 +129,19 @@ export function BottomNav({ active, onChange }) {
 }
 
 export function StatusBar() {
-  return <div style={{ height: 'calc(20px + var(--safe-top))' }} aria-hidden="true" />;
+  // Безусловный отступ под полосу с кнопками TG, плюс iOS safe-area-inset-top.
+  return (
+    <div
+      style={{ height: 'calc(var(--tg-top-pad) + var(--safe-top))' }}
+      aria-hidden="true"
+    />
+  );
 }
 
-export function TopBar({ title, subtitle, onBack, onHome, right, transparent = false }) {
+// Визуальные кнопки back/home убраны: для возврата работает встроенная Telegram
+// BackButton (см. setBackButton в telegram.js + App.jsx), а на главную ведёт
+// первая иконка в BottomNav. props onBack/onHome оставлены для совместимости.
+export function TopBar({ title, subtitle, onBack: _onBack, onHome: _onHome, right, transparent = false }) {
   return (
     <div
       style={{
@@ -144,53 +154,6 @@ export function TopBar({ title, subtitle, onBack, onHome, right, transparent = f
         background: transparent ? 'transparent' : 'rgba(7,0,15,0.0)',
       }}
     >
-      {onBack && (
-        <button
-          onClick={onBack}
-          aria-label="Назад"
-          style={{
-            background: 'rgba(255,255,255,0.08)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.10)',
-            width: 38,
-            height: 38,
-            borderRadius: 14,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M9 2 4 7l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
-      {!onBack && onHome && (
-        <button
-          onClick={onHome}
-          aria-label="На главную"
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.10)',
-            width: 38,
-            height: 38,
-            borderRadius: 14,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            cursor: 'pointer',
-            flexShrink: 0,
-            padding: 0,
-          }}
-        >
-          <Icon name="logo" size={22} />
-        </button>
-      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: -0.3, color: '#fff' }}>{title}</div>
         {subtitle && <div style={{ fontSize: 12, color: 'var(--t-2)', marginTop: 1 }}>{subtitle}</div>}

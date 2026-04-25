@@ -36,6 +36,9 @@
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Покрывает родную полосу с кнопками TG сверху (~50–80px на iOS,
+     ~30–50px на Android). Меняется в telegram.js по событию viewportChanged. */
+  --tg-top-pad: 24px;
 }
 
 html,
@@ -317,9 +320,9 @@ button {
 /* ---------- Bottom nav ---------- */
 .bottom-nav {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: calc(16px + var(--safe-bottom));
+  left: 8px;
+  right: 8px;
+  bottom: calc(12px + var(--safe-bottom));
   height: 64px;
   border-radius: 22px;
   background: rgba(15, 5, 30, 0.65);
@@ -327,7 +330,7 @@ button {
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.10);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   align-items: center;
   z-index: 30;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
@@ -364,6 +367,8 @@ button {
   width: 100%;
   height: 100vh;
   height: 100dvh;
+  /* Если TG предоставил реальную viewport-высоту — используем её (учитывает клавиатуру) */
+  height: var(--tg-viewport-h, 100dvh);
   max-width: 480px;
   margin: 0 auto;
   overflow: hidden;

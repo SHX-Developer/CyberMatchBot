@@ -24,6 +24,13 @@ function safe(fn) {
   }
 }
 
+function applyViewportHeight() {
+  if (!tg) return;
+  const h = tg.viewportStableHeight || tg.viewportHeight;
+  if (!h) return;
+  document.documentElement.style.setProperty('--tg-viewport-h', `${h}px`);
+}
+
 export function initTelegram() {
   if (!tg) return null;
   safe(() => tg.ready());
@@ -43,6 +50,12 @@ export function initTelegram() {
 
   if (supports('6.1') && typeof tg.setBackgroundColor === 'function') {
     safe(() => tg.setBackgroundColor('#07000F'));
+  }
+
+  // Динамическая высота viewport — обновляется при открытии клавиатуры в TG.
+  applyViewportHeight();
+  if (typeof tg.onEvent === 'function') {
+    safe(() => tg.onEvent('viewportChanged', applyViewportHeight));
   }
 
   return tg;

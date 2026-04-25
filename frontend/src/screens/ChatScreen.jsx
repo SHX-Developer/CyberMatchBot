@@ -62,6 +62,28 @@ export function ChatScreen({ go, activeChat }) {
     }
   }, [messages.length]);
 
+  // Realtime polling: каждые 3 сек тянем свежие сообщения и мерджим по id.
+  useEffect(() => {
+    if (!chatId) return undefined;
+    const interval = setInterval(async () => {
+      try {
+        const res = await listChatMessages(chatId, 1, 100);
+        const fresh = res?.items || [];
+        setMessages((prev) => {
+          if (fresh.length === prev.length) {
+            const lastA = prev[prev.length - 1];
+            const lastB = fresh[fresh.length - 1];
+            if (lastA?.id === lastB?.id) return prev;
+          }
+          return fresh;
+        });
+      } catch (e) {
+        // тихо игнорируем — на следующей итерации может получится
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [chatId]);
+
   const send = async () => {
     const text = draft.trim();
     if (!text || sending || !chatId) return;
@@ -222,17 +244,20 @@ export function ChatScreen({ go, activeChat }) {
           ))}
         </div>
 
-        {/* Composer */}
+        {/* Composer — закреплён внизу, виден всегда даже при длинном чате */}
         <div
           style={{
-            padding: '8px 12px calc(16px + var(--safe-bottom))',
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 10,
+            padding: '10px 12px calc(14px + var(--safe-bottom))',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            background: 'rgba(7,0,15,0.6)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(7,0,15,0.85)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            borderTop: '1px solid rgba(255,255,255,0.10)',
           }}
         >
           <input

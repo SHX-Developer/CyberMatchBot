@@ -415,12 +415,6 @@ export function ProfileScreen({ go, onHome }) {
                     {subtitleParts.join(' · ')}
                   </div>
                 )}
-                <span
-                  className="chip chip-accent"
-                  style={{ marginTop: 8, fontSize: 11, padding: '4px 10px' }}
-                >
-                  <Icon name="bolt" size={10} /> CYBER PRO
-                </span>
               </div>
             </div>
 

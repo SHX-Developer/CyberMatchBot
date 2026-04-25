@@ -1,12 +1,14 @@
 import { Icon } from './Icon.jsx';
 import { CMBackground, StatusBar } from './ui.jsx';
 
+// Визуальной кнопки back нет — для возврата работает встроенная TG BackButton.
+// onBack оставлен в сигнатуре для совместимости вызовов.
 export function StepShell({
   step,
   total,
   title,
   subtitle,
-  onBack,
+  onBack: _onBack,
   children,
   footer,
   scrollable = true,
@@ -42,48 +44,19 @@ export function StepShell({
             padding: '6px 16px 14px',
           }}
         >
-          {onBack ? (
-            <button
-              onClick={onBack}
-              aria-label="Назад"
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Icon name="logo" size={28} />
+            <div
               style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.10)',
-                width: 38,
-                height: 38,
-                borderRadius: 14,
-                display: 'grid',
-                placeItems: 'center',
-                color: '#fff',
-                cursor: 'pointer',
-                flexShrink: 0,
+                fontWeight: 800,
+                fontSize: 14,
+                letterSpacing: -0.2,
+                whiteSpace: 'nowrap',
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path
-                  d="M9 2 4 7l5 5"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Icon name="logo" size={28} />
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: 14,
-                  letterSpacing: -0.2,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                CYBER MATE
-              </div>
+              CYBER MATE
             </div>
-          )}
+          </div>
           {step != null && total != null && (
             <div
               style={{

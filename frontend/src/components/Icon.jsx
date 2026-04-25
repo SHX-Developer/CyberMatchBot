@@ -170,6 +170,12 @@ export function Icon({ name, size = 22, stroke = 'currentColor', fill = 'none', 
           <path d="M3 7l4 5 5-7 5 7 4-5-2 12H5L3 7Z" />
         </svg>
       );
+    case 'home':
+      return (
+        <svg {...p}>
+          <path d="M3 11 12 3l9 8M5 9.5V20a1 1 0 0 0 1 1h4v-7h4v7h4a1 1 0 0 0 1-1V9.5" />
+        </svg>
+      );
     case 'logo':
       return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none">

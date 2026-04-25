@@ -1,13 +1,18 @@
+import { useEffect, useState } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import {
-  Avatar,
   BottomNav,
   CMBackground,
   GameBlock,
   SectionHeading,
   StatusBar,
 } from '../components/ui.jsx';
-import { GAMES, PLAYERS } from '../data/mock.js';
+import { GAMES } from '../data/mock.js';
+import { GAME_BACKEND_CODE } from './create/games.js';
+import { getMyStats } from '../api.js';
+import { useStore } from '../store.jsx';
+
+const TOP_GAMES = ['mlbb', 'magic_chess', 'pubg', 'genshin', 'honkai', 'zzz', 'csgo'];
 
 function QuickCard({ onClick, icon, label, hint, badge, gradient }) {
   return (
@@ -44,7 +49,7 @@ function QuickCard({ onClick, icon, label, hint, badge, gradient }) {
       </div>
       <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: -0.2 }}>{label}</div>
       <div style={{ fontSize: 11, color: 'var(--t-2)', marginTop: 2 }}>{hint}</div>
-      {badge && (
+      {badge != null && Number(badge) > 0 && (
         <span
           style={{
             position: 'absolute',
@@ -66,8 +71,35 @@ function QuickCard({ onClick, icon, label, hint, badge, gradient }) {
   );
 }
 
+function plural(n, [one, few, many]) {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+  return many;
+}
+
 export function HomeScreen({ go }) {
-  const onlinePlayers = PLAYERS.filter((p) => p.online);
+  const { state } = useStore();
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMyStats()
+      .then((s) => !cancelled && setStats(s))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [state.profiles.length]);
+
+  const display =
+    state.user?.nickname || state.user?.first_name || 'тиммейт';
+
+  const profilesCount = stats?.profiles_count ?? state.profiles.length;
+  const likesCount = stats?.likes_count ?? 0;
+  const friendsCount = stats?.friends_count ?? 0;
+
   return (
     <div
       style={{
@@ -128,10 +160,11 @@ export function HomeScreen({ go }) {
               cursor: 'pointer',
             }}
           >
-            <Icon name="settings" size={18} />
+            <Icon name="user" size={18} />
           </button>
         </div>
 
+        {/* Hero */}
         <div style={{ padding: '24px 20px 16px' }}>
           <div
             style={{
@@ -142,7 +175,7 @@ export function HomeScreen({ go }) {
               marginBottom: 14,
             }}
           >
-            Найди
+            Привет,
             <br />
             <span
               style={{
@@ -152,10 +185,12 @@ export function HomeScreen({ go }) {
                 backgroundClip: 'text',
               }}
             >
-              тиммейта
+              {display}
             </span>
             <br />
-            <span style={{ color: 'var(--t-2)', fontWeight: 700 }}>за пару секунд.</span>
+            <span style={{ color: 'var(--t-2)', fontWeight: 700, fontSize: 28 }}>
+              готов к катке?
+            </span>
           </div>
           <div
             style={{
@@ -165,56 +200,22 @@ export function HomeScreen({ go }) {
               maxWidth: 320,
             }}
           >
-            Создавай игровые анкеты, лайкай игроков и собирай команду для катки.
+            {profilesCount === 0
+              ? 'Начни с создания игровой анкеты — без неё другие игроки тебя не увидят.'
+              : `${profilesCount} ${plural(profilesCount, ['анкета', 'анкеты', 'анкет'])} · ${friendsCount} ${plural(friendsCount, ['друг', 'друга', 'друзей'])} · ${likesCount} ${plural(likesCount, ['лайк', 'лайка', 'лайков'])}`}
           </div>
 
           <button
-            onClick={() => go('search')}
+            onClick={() => go(profilesCount === 0 ? 'create-game' : 'search')}
             className="btn btn-primary"
             style={{ width: '100%', marginTop: 22, height: 56, fontSize: 17 }}
           >
-            <Icon name="search" size={20} />
-            Найти тиммейта
+            <Icon name={profilesCount === 0 ? 'controller' : 'search'} size={20} />
+            {profilesCount === 0 ? 'Создать анкету' : 'Найти тиммейта'}
           </button>
         </div>
 
-        <div style={{ padding: '8px 20px 4px' }}>
-          <SectionHeading>В сети сейчас · {onlinePlayers.length}</SectionHeading>
-        </div>
-        <div
-          className="scroll-x"
-          style={{ display: 'flex', gap: 10, padding: '0 20px 16px', overflowX: 'auto' }}
-        >
-          {[...onlinePlayers, ...PLAYERS.filter((p) => !p.online)].map((p) => (
-            <div
-              key={p.id}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 6,
-                flexShrink: 0,
-              }}
-            >
-              <Avatar av={p.av} size={56} label={p.nick[0]} online={p.online} ring />
-              <div
-                style={{
-                  fontSize: 11,
-                  color: '#fff',
-                  fontWeight: 600,
-                  maxWidth: 60,
-                  textAlign: 'center',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {p.nick}
-              </div>
-            </div>
-          ))}
-        </div>
-
+        {/* Quick actions grid */}
         <div style={{ padding: '4px 20px 0' }}>
           <SectionHeading>Быстрые действия</SectionHeading>
         </div>
@@ -237,63 +238,72 @@ export function HomeScreen({ go }) {
             onClick={() => go('profiles')}
             icon="controller"
             label="Мои анкеты"
-            hint="2 активных"
+            hint={
+              profilesCount === 0
+                ? 'нет анкет'
+                : `${profilesCount} ${plural(profilesCount, ['анкета', 'анкеты', 'анкет'])}`
+            }
             gradient="linear-gradient(135deg, rgba(255,79,216,0.30), rgba(139,92,255,0.10))"
           />
           <QuickCard
             onClick={() => go('chats')}
             icon="chat"
             label="Сообщения"
-            hint="3 новых"
-            badge="3"
+            hint="новые чаты появятся здесь"
             gradient="linear-gradient(135deg, rgba(22,139,255,0.30), rgba(50,213,131,0.10))"
           />
           <QuickCard
             onClick={() => go('activity')}
             icon="star"
             label="Активность"
-            hint="12 лайков"
+            hint={`${likesCount} ${plural(likesCount, ['лайк', 'лайка', 'лайков'])}`}
             gradient="linear-gradient(135deg, rgba(255,196,61,0.20), rgba(255,79,216,0.10))"
           />
         </div>
 
+        {/* Featured games */}
         <div style={{ padding: '20px 20px 0' }}>
           <SectionHeading
             action={
-              <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }}>
-                Все →
+              <button
+                onClick={() => go('search')}
+                className="btn btn-ghost"
+                style={{ padding: '4px 8px', fontSize: 12 }}
+              >
+                Поиск →
               </button>
             }
           >
-            Топ игры
+            Поддерживаемые игры
           </SectionHeading>
         </div>
         <div
           className="scroll-x"
           style={{ display: 'flex', gap: 12, padding: '0 20px 24px', overflowX: 'auto' }}
         >
-          {Object.keys(GAMES).map((g) => (
-            <div key={g} style={{ flexShrink: 0, width: 140 }}>
+          {TOP_GAMES.filter((g) => GAMES[g]).map((g) => (
+            <button
+              key={g}
+              onClick={() => go('search')}
+              style={{
+                flexShrink: 0,
+                width: 140,
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
               <GameBlock game={g} size="sm" />
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 11,
-                  color: 'var(--t-2)',
-                  fontFamily: 'JetBrains Mono, monospace',
-                  letterSpacing: '0.1em',
-                }}
-              >
-                {200 + g.length * 137} ИГРОКОВ
-              </div>
-            </div>
+            </button>
           ))}
         </div>
 
         <div style={{ height: 110 }} />
       </div>
 
-      <BottomNav active="search" onChange={go} />
+      <BottomNav active="home" onChange={go} />
     </div>
   );
 }
