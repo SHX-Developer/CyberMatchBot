@@ -307,7 +307,19 @@ export function ChatScreen({ go, activeChat }) {
         {/* Messages */}
         <div
           ref={scrollRef}
-          style={{ flex: 1, overflow: 'auto', padding: '8px 16px' }}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            // Контейнер должен сам гасить overscroll, иначе на iOS WebApp
+            // тач уходит «сквозь» список и нельзя докрутить до самого края.
+            overscrollBehavior: 'contain',
+            WebkitOverflowScrolling: 'touch',
+            // Воздух сверху/снизу: первое и последнее сообщение не должны
+            // упираться в TopBar и в композер.
+            padding: '20px 16px 24px',
+          }}
           className="no-scrollbar"
         >
           {loading && (
@@ -424,12 +436,11 @@ export function ChatScreen({ go, activeChat }) {
           `}</style>
         </div>
 
-        {/* Composer — закреплён внизу, виден всегда даже при длинном чате */}
+        {/* Composer — закреплён внизу как отдельная flex-полоса (не sticky:
+            scrollRef уже флексится сверху, так что композер всегда видим). */}
         <div
           style={{
-            position: 'sticky',
-            bottom: 0,
-            zIndex: 10,
+            flexShrink: 0,
             padding: '10px 12px calc(14px + var(--safe-bottom))',
             display: 'flex',
             alignItems: 'center',
