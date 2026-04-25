@@ -11,7 +11,6 @@ services:
   backend:
     build:
       context: ./backend
-    image: cybermate-backend:latest
     restart: unless-stopped
     environment:
       BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
@@ -25,8 +24,8 @@ services:
 
   # ─────────────────── Telegram Bot (long polling) ───────────────────
   bot:
-    image: cybermate-backend:latest
-    pull_policy: never
+    build:
+      context: ./backend
     restart: unless-stopped
     depends_on:
       backend:
@@ -42,7 +41,6 @@ services:
   frontend:
     build:
       context: ./frontend
-    image: cybermate-frontend:latest
     restart: unless-stopped
     depends_on:
       - backend
