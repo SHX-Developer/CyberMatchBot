@@ -7,7 +7,7 @@
 name: cybermate
 
 services:
-  # ─────────────────── REST API (FastAPI) ───────────────────
+  # ─────────────────── API + Telegram Bot (один контейнер) ───────────────────
   backend:
     build:
       context: ./backend
@@ -21,21 +21,6 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     expose:
       - "8000"
-
-  # ─────────────────── Telegram Bot (long polling) ───────────────────
-  bot:
-    build:
-      context: ./backend
-    restart: unless-stopped
-    depends_on:
-      backend:
-        condition: service_started
-    environment:
-      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
-      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-      WEBAPP_URL: ${WEBAPP_URL:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    command: python -m app.main
 
   # ─────────────────── Frontend (nginx + Vite build) ───────────────────
   frontend:

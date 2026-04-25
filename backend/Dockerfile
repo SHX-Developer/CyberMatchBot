@@ -37,9 +37,11 @@ RUN pip install --upgrade pip \
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
 RUN pip install -e .
 
-# По умолчанию — REST API. Бот переопределяет CMD в docker-compose.
+# Один контейнер — uvicorn + бот в фоне (см. entrypoint.sh).
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.web.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["./entrypoint.sh"]
