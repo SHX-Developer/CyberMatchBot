@@ -1,0 +1,39 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Env (никогда не коммитим — реальные .env лежат на VPS)
+.env
+.env.local
+.env.production
+**/.env
+**/.env.local
+**/.env.production
+!**/.env.example
+
+# Backend
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.egg-info/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mypy_cache/
+backend/*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.log
+
+# Old layout / design source folders (макеты прототипа, не нужны в git)
+"CYBER MATE APP"/
+макет/
+design/
+app/
+bot/

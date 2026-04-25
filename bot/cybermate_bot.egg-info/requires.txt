@@ -1,6 +1,0 @@
-aiogram==3.13.1
-SQLAlchemy<3.0.0,>=2.0.32
-greenlet<4.0.0,>=3.1.1
-asyncpg<0.31.0,>=0.30.0
-alembic<2.0.0,>=1.13.2
-python-dotenv<2.0.0,>=1.0.1

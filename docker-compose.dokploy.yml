@@ -1,0 +1,50 @@
+# Compose для развёртывания в Dokploy.
+# Postgres сюда не включён — используем существующий Postgres-сервис из Dokploy.
+# В Dokploy → Environment задайте полный DATABASE_URL, например:
+#   DATABASE_URL=postgresql+asyncpg://USER:PASS@cybermate-postgres:5432/cybermate
+# и подключите этот compose-сервис к сети Postgres-сервиса (вкладка Network → External).
+
+name: cybermate
+
+services:
+  # ─────────────────── REST API (FastAPI) ───────────────────
+  backend:
+    build:
+      context: ./backend
+    image: cybermate-backend:latest
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      WEBAPP_AUTH_REQUIRED: ${WEBAPP_AUTH_REQUIRED:-true}
+      WEBAPP_DEV_USER_ID: ${WEBAPP_DEV_USER_ID:-}
+      WEBAPP_URL: ${WEBAPP_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    expose:
+      - "8000"
+
+  # ─────────────────── Telegram Bot (long polling) ───────────────────
+  bot:
+    image: cybermate-backend:latest
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      WEBAPP_URL: ${WEBAPP_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: python -m app.main
+
+  # ─────────────────── Frontend (nginx + Vite build) ───────────────────
+  frontend:
+    build:
+      context: ./frontend
+    image: cybermate-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "80"

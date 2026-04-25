@@ -1,0 +1,72 @@
+name: cybermate
+
+services:
+  # ─────────────────────── Postgres ───────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cybermate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-cybermate}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cybermate} -d ${POSTGRES_DB:-cybermate}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ─────────────────────── REST API (FastAPI + uvicorn) ───────────────────────
+  backend:
+    build:
+      context: ./backend
+    image: cybermate-backend:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cybermate}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cybermate}
+      WEBAPP_AUTH_REQUIRED: ${WEBAPP_AUTH_REQUIRED:-true}
+      WEBAPP_DEV_USER_ID: ${WEBAPP_DEV_USER_ID:-}
+      WEBAPP_URL: ${WEBAPP_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    expose:
+      - "8000"
+
+  # ─────────────────────── Telegram bot (long polling) ───────────────────────
+  bot:
+    image: cybermate-backend:latest
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cybermate}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cybermate}
+      WEBAPP_URL: ${WEBAPP_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: python -m app.main
+
+  # ─────────────────────── Frontend (nginx + Vite build) ───────────────────────
+  frontend:
+    build:
+      context: ./frontend
+    image: cybermate-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "80"
+    ports:
+      # Хост-порт для standalone теста. В Dokploy/Traefik этот маппинг не нужен —
+      # удалите эту секцию или измените порт.
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  postgres_data:
