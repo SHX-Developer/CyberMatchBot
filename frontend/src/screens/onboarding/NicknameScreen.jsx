@@ -72,9 +72,9 @@ export function NicknameScreen({ go }) {
     try {
       const res = await registerUser({
         language: draft.language,
-        birth_date: draft.birth_date,
         gender: draft.gender,
         nickname,
+        ...(draft.birth_date ? { birth_date: draft.birth_date } : {}),
       });
       dispatch({
         type: 'COMPLETE_REGISTRATION',
@@ -96,8 +96,8 @@ export function NicknameScreen({ go }) {
 
   return (
     <StepShell
-      step={4}
-      total={4}
+      step={3}
+      total={3}
       title="Придумайте никнейм"
       subtitle="По нему другие игроки смогут найти вас внутри Cyber Mate"
       onBack={() => go('onb-gender')}

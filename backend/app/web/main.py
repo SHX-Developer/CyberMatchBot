@@ -30,6 +30,7 @@ from app.services import (
     UserService,
 )
 from app.web.auth import TelegramAuth, get_telegram_auth
+from app.web.ws import broadcast_message, router as ws_router
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -74,7 +75,7 @@ def _validate_nickname(value: str) -> tuple[str | None, str | None]:
 
 class RegisterPayload(BaseModel):
     language: LanguageCode
-    birth_date: date
+    birth_date: date | None = None
     gender: UserGenderCode
     nickname: str
 
@@ -171,6 +172,7 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+app.include_router(ws_router)
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -323,13 +325,14 @@ async def register(
     if err is not None:
         raise HTTPException(status_code=400, detail={'field': 'nickname', 'reason': err})
 
-    # Возрастные ограничения 13–100.
-    today = date.today()
-    age = today.year - payload.birth_date.year - (
-        (today.month, today.day) < (payload.birth_date.month, payload.birth_date.day)
-    )
-    if payload.birth_date > today or age < 13 or age > 100:
-        raise HTTPException(status_code=400, detail={'field': 'birth_date', 'reason': 'invalid'})
+    # Дата рождения опциональна — если задана, валидируем 13–100 лет.
+    if payload.birth_date is not None:
+        today = date.today()
+        age = today.year - payload.birth_date.year - (
+            (today.month, today.day) < (payload.birth_date.month, payload.birth_date.day)
+        )
+        if payload.birth_date > today or age < 13 or age > 100:
+            raise HTTPException(status_code=400, detail={'field': 'birth_date', 'reason': 'invalid'})
 
     repo = UserRepository(session)
     if await repo.nickname_exists(nick, exclude_user_id=auth.user_id):
@@ -791,6 +794,14 @@ async def api_send_message(
     )
     if entity is None:
         raise HTTPException(status_code=400, detail={'reason': error or 'message_send_failed'})
+    # Закоммитим до broadcast — иначе подписчики получат ивент раньше, чем сообщение
+    # станет видно в БД (читатель сразу запросит свежий список).
+    await session.commit()
+    try:
+        await broadcast_message(int(entity.chat_id), entity)
+    except Exception:
+        # broadcast — best effort, ошибка не должна валить запрос.
+        pass
     return {
         'id': int(entity.id),
         'chat_id': int(entity.chat_id),

@@ -146,7 +146,6 @@ export function useStore() {
 
 export function resumeOnboardingStep(draft) {
   if (!draft.language) return 'onb-language';
-  if (!draft.birth_date) return 'onb-birth';
   if (!draft.gender) return 'onb-gender';
   if (!draft.nickname) return 'onb-nickname';
   return 'onb-done';

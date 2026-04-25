@@ -15,13 +15,13 @@ export function LanguageScreen({ go }) {
   const pick = (code) => {
     haptic('select');
     dispatch({ type: 'SET_ONBOARDING_DRAFT', payload: { language: code } });
-    setTimeout(() => go('onb-birth'), 120);
+    setTimeout(() => go('onb-gender'), 120);
   };
 
   return (
     <StepShell
       step={1}
-      total={4}
+      total={3}
       title="Выберите язык"
       subtitle="Язык можно будет изменить позже в настройках"
     >

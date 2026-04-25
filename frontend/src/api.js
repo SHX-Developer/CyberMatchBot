@@ -216,4 +216,36 @@ export async function toggleSubscription(targetUserId) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// WebSocket helpers — realtime сообщения, typing, presence.
+// ─────────────────────────────────────────────────────────────────────────
+
+export function buildChatSocketUrl(chatId) {
+  if (!chatId) return null;
+  // origin фронта = origin бэка (nginx прокси /ws/ → backend).
+  // В dev (Vite) переменная VITE_API_URL может указывать на http(s)://host
+  // — приводим к ws(s).
+  const base = API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+  if (!base) return null;
+  let wsBase;
+  try {
+    const url = new URL(base, typeof window !== 'undefined' ? window.location.href : undefined);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.search = '';
+    url.hash = '';
+    wsBase = url.toString().replace(/\/$/, '');
+  } catch (e) {
+    return null;
+  }
+  const initData = tg?.initData || '';
+  const params = new URLSearchParams();
+  if (initData) {
+    params.set('init_data', initData);
+  } else if (DEV_USER_ID) {
+    params.set('dev_user_id', String(DEV_USER_ID));
+  }
+  const qs = params.toString();
+  return `${wsBase}/ws/chat/${chatId}${qs ? `?${qs}` : ''}`;
+}
+
 export { ApiError };

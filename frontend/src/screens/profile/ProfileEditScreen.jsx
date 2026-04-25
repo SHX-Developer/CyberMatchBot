@@ -265,9 +265,16 @@ export function ProfileEditScreen({ go }) {
             max={todayIso()}
             onChange={(e) => setBirthDate(e.target.value)}
             style={{
+              display: 'block',
+              width: '100%',
+              maxWidth: '100%',
+              minWidth: 0,
+              boxSizing: 'border-box',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: 16,
               colorScheme: 'dark',
+              WebkitAppearance: 'none',
+              appearance: 'none',
             }}
           />
         </div>

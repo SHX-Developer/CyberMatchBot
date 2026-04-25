@@ -163,7 +163,7 @@ class UserRepository:
         language: LanguageCode,
         gender: UserGenderCode,
         nickname: str,
-        birth_date: date,
+        birth_date: date | None = None,
     ) -> User:
         user = await self.get_by_id(user_id)
         if user is None:
@@ -189,7 +189,8 @@ class UserRepository:
         user.language_code = language
         user.gender = gender
         user.nickname = nickname
-        user.birth_date = birth_date
+        if birth_date is not None:
+            user.birth_date = birth_date
         user.is_registered = True
 
         await self.session.flush()

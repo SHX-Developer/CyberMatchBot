@@ -52,20 +52,25 @@ export function ChatsScreen({ go, onOpenChat, onHome }) {
   useEffect(() => {
     let cancelled = false;
     setChatsLoading(true);
-    listChats(1, 50)
-      .then((res) => {
+    const fetchChats = async () => {
+      try {
+        const res = await listChats(1, 50);
         if (cancelled) return;
         setChats(res?.items || []);
-      })
-      .catch(() => {
+      } catch (e) {
         if (cancelled) return;
-        setChats([]);
-      })
-      .finally(() => {
+        // Не сбрасываем список при ошибке поллинга, только при первой загрузке.
+      } finally {
         if (!cancelled) setChatsLoading(false);
-      });
+      }
+    };
+    fetchChats();
+    // Лёгкий polling, чтобы новые сообщения / непрочитанные счётчики
+    // подтягивались, пока пользователь смотрит на список чатов.
+    const interval = setInterval(fetchChats, 5000);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 

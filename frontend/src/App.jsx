@@ -8,7 +8,6 @@ import { ChatScreen } from './screens/ChatScreen.jsx';
 import { ActivityScreen } from './screens/ActivityScreen.jsx';
 import { ProfileScreen } from './screens/ProfileScreen.jsx';
 import { LanguageScreen } from './screens/onboarding/LanguageScreen.jsx';
-import { BirthDateScreen } from './screens/onboarding/BirthDateScreen.jsx';
 import { GenderScreen } from './screens/onboarding/GenderScreen.jsx';
 import { NicknameScreen } from './screens/onboarding/NicknameScreen.jsx';
 import { RegisteredScreen } from './screens/onboarding/RegisteredScreen.jsx';
@@ -46,14 +45,12 @@ const BACK_TARGETS = {
   // activity
   'activity-list': 'activity',
   // onboarding
-  'onb-birth': 'onb-language',
-  'onb-gender': 'onb-birth',
+  'onb-gender': 'onb-language',
   'onb-nickname': 'onb-gender',
 };
 
 const ONBOARDING_SCREENS = new Set([
   'onb-language',
-  'onb-birth',
   'onb-gender',
   'onb-nickname',
   'onb-done',
@@ -176,8 +173,6 @@ export default function App() {
     switch (screen) {
       case 'onb-language':
         return <LanguageScreen go={go} />;
-      case 'onb-birth':
-        return <BirthDateScreen go={go} />;
       case 'onb-gender':
         return <GenderScreen go={go} />;
       case 'onb-nickname':

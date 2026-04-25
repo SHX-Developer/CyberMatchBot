@@ -269,7 +269,7 @@ export function ProfileScreen({ go, onHome }) {
       showAlert('Никнейм не задан');
       return;
     }
-    const url = `https://t.me/cybermate_bot?start=u_${user.nickname}`;
+    const url = `https://t.me/Cyber_MateBot?start=u_${user.nickname}`;
     const text = `Найди меня в Cyber Mate — @${user.nickname}`;
     shareLink(url, text);
   };

@@ -38,7 +38,7 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   /* Покрывает родную полосу с кнопками TG сверху (~50–80px на iOS,
      ~30–50px на Android). Меняется в telegram.js по событию viewportChanged. */
-  --tg-top-pad: 24px;
+  --tg-top-pad: 40px;
 }
 
 html,

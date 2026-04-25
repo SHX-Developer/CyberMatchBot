@@ -20,11 +20,11 @@ export function GenderScreen({ go }) {
 
   return (
     <StepShell
-      step={3}
-      total={4}
+      step={2}
+      total={3}
       title="Выберите гендер"
       subtitle="Эта информация будет отображаться в вашем профиле"
-      onBack={() => go('onb-birth')}
+      onBack={() => go('onb-language')}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {GENDERS.map((g) => {

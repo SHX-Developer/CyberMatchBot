@@ -58,7 +58,53 @@ export function initTelegram() {
     safe(() => tg.onEvent('viewportChanged', applyViewportHeight));
   }
 
+  installGlobalHaptics();
+
   return tg;
+}
+
+// Глобальный haptic на любые тапы по интерактивным элементам.
+// Так каждая кнопка / ссылка / .chip / .input триггерит лёгкую вибрацию,
+// без необходимости дописывать onPointerDown в каждом компоненте.
+let HAPTICS_INSTALLED = false;
+function installGlobalHaptics() {
+  if (HAPTICS_INSTALLED || typeof document === 'undefined') return;
+  HAPTICS_INSTALLED = true;
+  const isInteractive = (el) => {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.disabled) return false;
+    const tag = el.tagName;
+    if (tag === 'BUTTON' || tag === 'A' || tag === 'SUMMARY' || tag === 'LABEL') return true;
+    if (tag === 'INPUT') {
+      const type = (el.type || '').toLowerCase();
+      return ['button', 'submit', 'reset', 'checkbox', 'radio', 'file'].includes(type);
+    }
+    if (tag === 'SELECT') return true;
+    if (el.getAttribute && el.getAttribute('role')) {
+      const role = el.getAttribute('role').toLowerCase();
+      if (['button', 'tab', 'switch', 'checkbox', 'menuitem', 'option'].includes(role)) return true;
+    }
+    if (el.classList && (el.classList.contains('chip') || el.classList.contains('btn'))) return true;
+    return false;
+  };
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      // Только основная кнопка / тач — не контекстное меню.
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      let node = e.target;
+      let depth = 0;
+      while (node && depth < 5) {
+        if (isInteractive(node)) {
+          haptic('light');
+          return;
+        }
+        node = node.parentElement;
+        depth += 1;
+      }
+    },
+    { capture: true, passive: true },
+  );
 }
 
 export function haptic(type = 'light') {

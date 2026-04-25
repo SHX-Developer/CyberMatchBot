@@ -6,6 +6,7 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart
 from aiogram.types import (
     FSInputFile,
@@ -27,15 +28,18 @@ WELCOME_TEXT = (
     'Открой мини-приложение по кнопке ниже 👇'
 )
 
-# Картинка главного меню. assets/games.png — готовый промо-баннер из ассетов проекта.
-ASSETS_DIR = Path(__file__).resolve().parent / 'assets'
-WELCOME_IMAGE = ASSETS_DIR / 'games.png'
+# Старый логотип Cyber Mate, уже залитый в Telegram CDN — переиспользуем file_id.
+WELCOME_PHOTO_FILE_ID = 'AgACAgIAAxkBAAILumnWAv0c6uSQOECSBFlaA7bPvM4jAALoFWsb43OwSmaQzA3VTpunAQADAgADeAADOwQ'
 
-# URL Web App. Когда задеплоим фронт — пропишем сюда (env WEBAPP_URL).
-# Пустая строка = кнопка не добавляется.
-def _build_keyboard(webapp_url: str | None) -> InlineKeyboardMarkup | None:
-    if not webapp_url:
-        return None
+# Запасной локальный файл — если Telegram отвергнет file_id (например, бот сменили).
+ASSETS_DIR = Path(__file__).resolve().parent / 'assets'
+WELCOME_IMAGE_FALLBACK = ASSETS_DIR / 'games.png'
+
+# Прямой URL Web App — используем всегда, даже если settings.webapp_url не задан.
+WEBAPP_URL_DEFAULT = 'https://shx-cybermate.duckdns.org'
+
+
+def _build_keyboard(webapp_url: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -50,11 +54,25 @@ def _build_keyboard(webapp_url: str | None) -> InlineKeyboardMarkup | None:
 
 async def cmd_start(message: Message) -> None:
     settings = get_settings()
-    keyboard = _build_keyboard(getattr(settings, 'webapp_url', None))
+    webapp_url = (getattr(settings, 'webapp_url', None) or WEBAPP_URL_DEFAULT).strip()
+    keyboard = _build_keyboard(webapp_url)
 
-    photo = FSInputFile(WELCOME_IMAGE) if WELCOME_IMAGE.exists() else None
-    if photo is not None:
-        await message.answer_photo(photo=photo, caption=WELCOME_TEXT, reply_markup=keyboard)
+    try:
+        await message.answer_photo(
+            photo=WELCOME_PHOTO_FILE_ID,
+            caption=WELCOME_TEXT,
+            reply_markup=keyboard,
+        )
+        return
+    except TelegramBadRequest as exc:
+        logger.warning('Failed to send welcome by file_id: %s; falling back to local file', exc)
+
+    if WELCOME_IMAGE_FALLBACK.exists():
+        await message.answer_photo(
+            photo=FSInputFile(WELCOME_IMAGE_FALLBACK),
+            caption=WELCOME_TEXT,
+            reply_markup=keyboard,
+        )
     else:
         await message.answer(WELCOME_TEXT, reply_markup=keyboard)
 

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { Avatar, BottomNav, CMBackground, StatusBar, TopBar } from '../components/ui.jsx';
-import { listChatMessages, sendChatMessage } from '../api.js';
+import { buildChatSocketUrl, listChatMessages, sendChatMessage } from '../api.js';
 import { haptic, showAlert } from '../telegram.js';
 
 function avSeed(id) {
@@ -26,8 +26,19 @@ export function ChatScreen({ go, activeChat }) {
   const [error, setError] = useState(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [partnerOnline, setPartnerOnline] = useState(false);
+  const [partnerTyping, setPartnerTyping] = useState(false);
+
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const wsRef = useRef(null);
+  const typingHideTimerRef = useRef(null);
+  const lastTypingSentAtRef = useRef(0);
+  const partnerIdRef = useRef(initialPartner?.id ?? null);
+
+  useEffect(() => {
+    partnerIdRef.current = partner?.id ?? null;
+  }, [partner?.id]);
 
   useEffect(() => {
     if (!chatId) {
@@ -55,34 +66,155 @@ export function ChatScreen({ go, activeChat }) {
     };
   }, [chatId]);
 
-  // прокрутить вниз при появлении новых сообщений
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages.length]);
+  // Auto-scroll к низу: после рендера новых сообщений раскручиваем до самого
+  // конца. useLayoutEffect срабатывает до paint — не будет «прыжка».
+  // requestAnimationFrame подстраховывает на случай асинхронного layout
+  // (картинки, пузыри сообщений переменной высоты).
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const scroll = () => {
+      el.scrollTop = el.scrollHeight;
+    };
+    scroll();
+    const raf = requestAnimationFrame(scroll);
+    return () => cancelAnimationFrame(raf);
+  }, [messages, partnerTyping]);
 
-  // Realtime polling: каждые 3 сек тянем свежие сообщения и мерджим по id.
+  // Realtime через WebSocket: новые сообщения, typing, presence.
+  // Если WS-handshake не пройдёт (например, прокси не настроен) — упадём
+  // на polling, чтобы чат всё равно обновлялся.
   useEffect(() => {
     if (!chatId) return undefined;
-    const interval = setInterval(async () => {
-      try {
-        const res = await listChatMessages(chatId, 1, 100);
-        const fresh = res?.items || [];
-        setMessages((prev) => {
-          if (fresh.length === prev.length) {
-            const lastA = prev[prev.length - 1];
-            const lastB = fresh[fresh.length - 1];
-            if (lastA?.id === lastB?.id) return prev;
-          }
-          return fresh;
-        });
-      } catch (e) {
-        // тихо игнорируем — на следующей итерации может получится
+    const url = buildChatSocketUrl(chatId);
+    if (!url) return undefined;
+
+    let closed = false;
+    let pollTimer = null;
+    let reconnectTimer = null;
+    let socket = null;
+
+    const startPolling = () => {
+      if (pollTimer) return;
+      pollTimer = setInterval(async () => {
+        try {
+          const res = await listChatMessages(chatId, 1, 100);
+          const fresh = res?.items || [];
+          setMessages((prev) => {
+            if (fresh.length === prev.length) {
+              const lastA = prev[prev.length - 1];
+              const lastB = fresh[fresh.length - 1];
+              if (lastA?.id === lastB?.id) return prev;
+            }
+            return fresh;
+          });
+        } catch (e) {
+          // ignore
+        }
+      }, 4000);
+    };
+
+    const stopPolling = () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
       }
-    }, 3000);
-    return () => clearInterval(interval);
+    };
+
+    const connect = () => {
+      if (closed) return;
+      try {
+        socket = new WebSocket(url);
+      } catch (e) {
+        startPolling();
+        return;
+      }
+      wsRef.current = socket;
+
+      socket.onopen = () => {
+        stopPolling();
+      };
+
+      socket.onmessage = (ev) => {
+        let data;
+        try {
+          data = JSON.parse(ev.data);
+        } catch (e) {
+          return;
+        }
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'message' && data.message) {
+          const m = data.message;
+          const meIsSender = !!m.from_user_id && m.from_user_id !== (partnerIdRef.current ?? -1);
+          const item = { ...m, mine: meIsSender };
+          setMessages((prev) => {
+            if (prev.some((x) => x.id === item.id)) return prev;
+            return [...prev, item];
+          });
+          // Партнёр явно онлайн, раз шлёт сообщение.
+          if (!meIsSender) setPartnerOnline(true);
+        } else if (data.type === 'typing') {
+          if (data.user_id && data.user_id === partnerIdRef.current) {
+            setPartnerTyping(true);
+            if (typingHideTimerRef.current) clearTimeout(typingHideTimerRef.current);
+            typingHideTimerRef.current = setTimeout(() => setPartnerTyping(false), 2500);
+          }
+        } else if (data.type === 'presence') {
+          if (data.user_id === partnerIdRef.current) {
+            setPartnerOnline(!!data.online);
+            if (!data.online) setPartnerTyping(false);
+          }
+        } else if (data.type === 'presence_state') {
+          const ids = Array.isArray(data.online_user_ids) ? data.online_user_ids : [];
+          if (partnerIdRef.current != null) {
+            setPartnerOnline(ids.includes(partnerIdRef.current));
+          }
+        }
+      };
+
+      socket.onerror = () => {
+        // Логировать не нужно — обработка в onclose.
+      };
+
+      socket.onclose = () => {
+        wsRef.current = null;
+        if (closed) return;
+        // Подстрахуемся: пока WS лежит, тянем сообщения poll-ом.
+        startPolling();
+        // Переподключение с небольшим бэкоффом.
+        reconnectTimer = setTimeout(connect, 3000);
+      };
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      stopPolling();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (typingHideTimerRef.current) clearTimeout(typingHideTimerRef.current);
+      if (socket) {
+        try { socket.close(); } catch (e) { /* noop */ }
+      }
+      wsRef.current = null;
+      setPartnerOnline(false);
+      setPartnerTyping(false);
+    };
   }, [chatId]);
+
+  // Шлём typing на сервер (с throttling — не чаще раза в секунду).
+  const notifyTyping = () => {
+    const sock = wsRef.current;
+    if (!sock || sock.readyState !== WebSocket.OPEN) return;
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < 1500) return;
+    lastTypingSentAtRef.current = now;
+    try {
+      sock.send(JSON.stringify({ type: 'typing' }));
+    } catch (e) {
+      // ignore
+    }
+  };
 
   const send = async () => {
     const text = draft.trim();
@@ -91,7 +223,10 @@ export function ChatScreen({ go, activeChat }) {
     haptic('light');
     try {
       const msg = await sendChatMessage(chatId, text);
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => {
+        if (prev.some((x) => x.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
       setDraft('');
       // вернуть фокус в инпут
       setTimeout(() => inputRef.current?.focus(), 0);
@@ -149,13 +284,22 @@ export function ChatScreen({ go, activeChat }) {
         <TopBar
           onBack={() => go('chats')}
           title={partnerNick}
-          subtitle={partner?.id ? `id${partner.id}` : ''}
+          subtitle={
+            partnerTyping
+              ? 'печатает…'
+              : partnerOnline
+                ? 'в сети'
+                : partner?.id
+                  ? `id${partner.id}`
+                  : ''
+          }
           right={
             <Avatar
               av={avSeed(partner?.id)}
               size={38}
               label={partnerLetter}
               src={partner?.avatar_data_url || undefined}
+              online={partnerOnline}
             />
           }
         />
@@ -242,6 +386,42 @@ export function ChatScreen({ go, activeChat }) {
               </div>
             </div>
           ))}
+          {partnerTyping && (
+            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '18px 18px 18px 4px',
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  color: 'var(--t-2)',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span className="cm-typing-dots" aria-hidden="true">
+                  <span /><span /><span />
+                </span>
+                печатает
+              </div>
+            </div>
+          )}
+          <style>{`
+            .cm-typing-dots { display: inline-flex; gap: 3px; }
+            .cm-typing-dots span {
+              width: 5px; height: 5px; border-radius: 50%;
+              background: var(--t-2);
+              animation: cm-typing 1s infinite ease-in-out;
+            }
+            .cm-typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+            .cm-typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+            @keyframes cm-typing {
+              0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+              40% { opacity: 1; transform: translateY(-3px); }
+            }
+          `}</style>
         </div>
 
         {/* Composer — закреплён внизу, виден всегда даже при длинном чате */}
@@ -263,7 +443,10 @@ export function ChatScreen({ go, activeChat }) {
           <input
             ref={inputRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              if (e.target.value.length > 0) notifyTyping();
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
