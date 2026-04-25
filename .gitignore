@@ -35,5 +35,4 @@ frontend/*.log
 "CYBER MATE APP"/
 макет/
 design/
-app/
-bot/
+# (старые корневые app/ и bot/ были анти-паттерном — игнорировали и backend/app/)
