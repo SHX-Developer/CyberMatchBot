@@ -159,6 +159,10 @@ export async function searchUsers(q, limit = 20) {
   return request('/api/users/search', { query: { q: q.trim(), limit } });
 }
 
+export async function getUserById(userId) {
+  return request(`/api/users/${userId}`);
+}
+
 export async function searchPlayers({
   game = 'mlbb',
   region,

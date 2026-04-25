@@ -7,6 +7,7 @@ import { ChatsScreen } from './screens/ChatsScreen.jsx';
 import { ChatScreen } from './screens/ChatScreen.jsx';
 import { ActivityScreen } from './screens/ActivityScreen.jsx';
 import { ProfileScreen } from './screens/ProfileScreen.jsx';
+import { UserProfileScreen } from './screens/UserProfileScreen.jsx';
 import { LanguageScreen } from './screens/onboarding/LanguageScreen.jsx';
 import { GenderScreen } from './screens/onboarding/GenderScreen.jsx';
 import { NicknameScreen } from './screens/onboarding/NicknameScreen.jsx';
@@ -42,6 +43,7 @@ const BACK_TARGETS = {
   'profile-language': 'profile',
   'profile-security': 'profile',
   'my-card': 'profiles',
+  'user-profile': 'chats',
   // activity
   'activity-list': 'activity',
   // onboarding
@@ -125,6 +127,7 @@ export default function App() {
   const [activeMyProfile, setActiveMyProfile] = useState(null);
   const [activeChat, setActiveChat] = useState(null);
   const [activeActivitySection, setActiveActivitySection] = useState('liked_by');
+  const [activeUserTarget, setActiveUserTarget] = useState(null);
 
   useEffect(() => {
     initTelegram();
@@ -155,6 +158,7 @@ export default function App() {
     if (target === 'my-card' && payload) setActiveMyProfile(payload);
     if (target === 'chat' && payload) setActiveChat(payload);
     if (target === 'activity-list' && payload) setActiveActivitySection(payload);
+    if (target === 'user-profile' && payload) setActiveUserTarget(payload);
     setScreen(target);
   };
 
@@ -233,6 +237,14 @@ export default function App() {
         );
       case 'profile':
         return <ProfileScreen go={go} onHome={() => setScreen('home')} />;
+      case 'user-profile':
+        return (
+          <UserProfileScreen
+            go={go}
+            onOpenChat={openChat}
+            target={activeUserTarget}
+          />
+        );
       case 'profile-edit':
         return <ProfileEditScreen go={go} />;
       case 'profile-language':

@@ -108,6 +108,13 @@ export function ChatsScreen({ go, onOpenChat, onHome }) {
     });
   };
 
+  const openProfile = (e, partner) => {
+    e?.stopPropagation?.();
+    if (!partner?.id) return;
+    haptic('light');
+    go('user-profile', { id: partner.id, fallback: partner });
+  };
+
   const writeTo = async (user) => {
     if (startingId) return;
     setStartingId(user.id);
@@ -249,13 +256,27 @@ export function ChatsScreen({ go, onOpenChat, onHome }) {
                         i < results.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
                     }}
                   >
-                    <Avatar
-                      av={avSeed(u.id)}
-                      size={44}
-                      label={(u.nickname || u.first_name || '?')[0]?.toUpperCase()}
-                      src={u.avatar_data_url || undefined}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <button
+                      onClick={(e) => openProfile(e, u)}
+                      aria-label="Открыть профиль"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Avatar
+                        av={avSeed(u.id)}
+                        size={44}
+                        label={(u.nickname || u.first_name || '?')[0]?.toUpperCase()}
+                        src={u.avatar_data_url || undefined}
+                      />
+                    </button>
+                    <div
+                      onClick={(e) => openProfile(e, u)}
+                      style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                    >
                       <div
                         style={{
                           fontWeight: 700,
@@ -338,6 +359,12 @@ export function ChatsScreen({ go, onOpenChat, onHome }) {
                   const last = c.last_message_text ?? c.last_message ?? '';
                   const time = timeLabel(c.last_message_at || c.updated_at);
                   const unread = Number(c.unread_count || 0);
+                  const partnerForProfile = c.counterpart || {
+                    id: counterId,
+                    nickname: c.counterpart_nickname,
+                    full_name: c.counterpart_full_name,
+                    first_name: c.counterpart_full_name,
+                  };
                   return (
                     <div
                       key={c.id ?? c.chat_id}
@@ -353,12 +380,23 @@ export function ChatsScreen({ go, onOpenChat, onHome }) {
                           i < chats.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
                       }}
                     >
-                      <Avatar
-                        av={avSeed(counterId)}
-                        size={48}
-                        label={(nick || '?')[0]?.toUpperCase()}
-                        src={c.counterpart?.avatar_data_url || undefined}
-                      />
+                      <button
+                        onClick={(e) => openProfile(e, partnerForProfile)}
+                        aria-label="Открыть профиль"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Avatar
+                          av={avSeed(counterId)}
+                          size={48}
+                          label={(nick || '?')[0]?.toUpperCase()}
+                          src={c.counterpart?.avatar_data_url || undefined}
+                        />
+                      </button>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{

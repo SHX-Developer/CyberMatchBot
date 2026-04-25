@@ -536,6 +536,45 @@ async def api_search_users(
     return {'items': [_user_to_dict(u) for u in users]}
 
 
+@app.get('/api/users/{user_id}')
+async def api_get_user(
+    user_id: int,
+    auth: TelegramAuth = Depends(get_telegram_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    user_repo = UserRepository(session)
+    user = await user_repo.get_by_id(user_id)
+    if user is None or not user.is_registered:
+        raise HTTPException(status_code=404, detail={'reason': 'user_not_found'})
+
+    profile_repo = ProfileRepository(session)
+    profiles = await profile_repo.list_by_owner(user.id)
+
+    age = None
+    if user.birth_date:
+        today = date.today()
+        age = today.year - user.birth_date.year - (
+            (today.month, today.day) < (user.birth_date.month, user.birth_date.day)
+        )
+
+    interactions = InteractionService(session)
+    is_subscribed = await interactions.is_subscribed(auth.user_id, int(user.id))
+    has_like = await interactions.has_like(auth.user_id, int(user.id), GameCode.MLBB)
+
+    user_dict = _user_to_dict(user) or {}
+    return {
+        'user': {**user_dict, 'age': age},
+        'profiles': [
+            _profile_to_dict(p)
+            for p in profiles
+            if p.status is None or p.status == ProfileStatus.ACTIVE
+        ],
+        'is_subscribed': bool(is_subscribed),
+        'has_like': bool(has_like),
+        'is_self': int(user.id) == auth.user_id,
+    }
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Search (свайп-карточки тиммейтов по выбранной игре)
 # ────────────────────────────────────────────────────────────────────────────

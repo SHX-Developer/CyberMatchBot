@@ -268,22 +268,42 @@ export function ChatScreen({ go, activeChat }) {
     `id${partner?.id || '?'}`;
   const partnerLetter = (partnerNick || '?')[0]?.toUpperCase();
 
+  const openPartnerProfile = () => {
+    const id = partner?.id;
+    if (!id) return;
+    haptic('light');
+    go('user-profile', { id, fallback: partner });
+  };
+
   return (
     <div
       style={{
         position: 'relative',
         height: '100%',
         overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
+        // Жёсткий grid: header сверху, композер снизу, скролл-панель в середине.
+        // flex-column с min-height:0 на iOS WebApp иногда «выпускает» композер
+        // под край вьюпорта — grid с шаблоном строк решает это однозначно.
+        display: 'grid',
+        gridTemplateRows: 'auto auto 1fr auto',
+        gridTemplateColumns: '1fr',
       }}
     >
       <CMBackground style="aurora" />
-      <div style={{ position: 'relative', zIndex: 2, flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'relative', zIndex: 2, gridRow: '1' }}>
         <StatusBar />
+      </div>
+      <div style={{ position: 'relative', zIndex: 2, gridRow: '2' }}>
         <TopBar
           onBack={() => go('chats')}
-          title={partnerNick}
+          title={
+            <span
+              onClick={openPartnerProfile}
+              style={{ cursor: 'pointer' }}
+            >
+              {partnerNick}
+            </span>
+          }
           subtitle={
             partnerTyping
               ? 'печатает…'
@@ -294,17 +314,40 @@ export function ChatScreen({ go, activeChat }) {
                   : ''
           }
           right={
-            <Avatar
-              av={avSeed(partner?.id)}
-              size={38}
-              label={partnerLetter}
-              src={partner?.avatar_data_url || undefined}
-              online={partnerOnline}
-            />
+            <button
+              onClick={openPartnerProfile}
+              aria-label="Открыть профиль"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+              }}
+            >
+              <Avatar
+                av={avSeed(partner?.id)}
+                size={38}
+                label={partnerLetter}
+                src={partner?.avatar_data_url || undefined}
+                online={partnerOnline}
+              />
+            </button>
           }
         />
+      </div>
 
-        {/* Messages */}
+      {/* Messages — отдельная «панель» с фоном и рамкой. Скролл живёт ВНУТРИ
+          этой панели, а композер снаружи в нижней строке grid. */}
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 2,
+          gridRow: '3',
+          minHeight: 0,
+          padding: '0 12px',
+          display: 'flex',
+        }}
+      >
         <div
           ref={scrollRef}
           style={{
@@ -312,13 +355,14 @@ export function ChatScreen({ go, activeChat }) {
             minHeight: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            // Контейнер должен сам гасить overscroll, иначе на iOS WebApp
-            // тач уходит «сквозь» список и нельзя докрутить до самого края.
             overscrollBehavior: 'contain',
             WebkitOverflowScrolling: 'touch',
-            // Воздух сверху/снизу: первое и последнее сообщение не должны
-            // упираться в TopBar и в композер.
-            padding: '20px 16px 24px',
+            padding: '16px 12px 20px',
+            borderRadius: 22,
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
           }}
           className="no-scrollbar"
         >
@@ -435,61 +479,63 @@ export function ChatScreen({ go, activeChat }) {
             }
           `}</style>
         </div>
+      </div>
 
-        {/* Composer — закреплён внизу как отдельная flex-полоса (не sticky:
-            scrollRef уже флексится сверху, так что композер всегда видим). */}
-        <div
+      {/* Composer — нижняя строка grid. Никогда не уезжает за вьюпорт даже
+          если в чате тысячи сообщений: grid-row:auto = высота по контенту. */}
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 3,
+          gridRow: '4',
+          padding: '10px 12px calc(14px + var(--safe-bottom))',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: 'rgba(7,0,15,0.85)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          borderTop: '1px solid rgba(255,255,255,0.10)',
+        }}
+      >
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (e.target.value.length > 0) notifyTyping();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          placeholder="Сообщение…"
+          disabled={sending}
+          className="input"
+          style={{ flex: 1, padding: '12px 14px', minWidth: 0 }}
+        />
+        <button
+          onClick={send}
+          disabled={!draft.trim() || sending}
           style={{
+            width: 44,
+            height: 44,
+            borderRadius: 14,
+            background: 'linear-gradient(135deg, var(--accent), var(--accent-2))',
+            color: '#fff',
+            border: 'none',
+            display: 'grid',
+            placeItems: 'center',
+            cursor: !draft.trim() || sending ? 'not-allowed' : 'pointer',
+            opacity: !draft.trim() || sending ? 0.5 : 1,
+            boxShadow: '0 6px 16px var(--accent-glow)',
             flexShrink: 0,
-            padding: '10px 12px calc(14px + var(--safe-bottom))',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            background: 'rgba(7,0,15,0.85)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            borderTop: '1px solid rgba(255,255,255,0.10)',
           }}
         >
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              if (e.target.value.length > 0) notifyTyping();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder="Сообщение…"
-            disabled={sending}
-            className="input"
-            style={{ flex: 1, padding: '12px 14px' }}
-          />
-          <button
-            onClick={send}
-            disabled={!draft.trim() || sending}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 14,
-              background: 'linear-gradient(135deg, var(--accent), var(--accent-2))',
-              color: '#fff',
-              border: 'none',
-              display: 'grid',
-              placeItems: 'center',
-              cursor: !draft.trim() || sending ? 'not-allowed' : 'pointer',
-              opacity: !draft.trim() || sending ? 0.5 : 1,
-              boxShadow: '0 6px 16px var(--accent-glow)',
-              flexShrink: 0,
-            }}
-          >
-            <Icon name="send" size={16} />
-          </button>
-        </div>
+          <Icon name="send" size={16} />
+        </button>
       </div>
     </div>
   );

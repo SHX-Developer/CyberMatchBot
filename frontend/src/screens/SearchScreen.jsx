@@ -556,7 +556,16 @@ export function SearchScreen({ go, onOpenChat, onHome }) {
                   transition: 'transform 320ms cubic-bezier(.2,.8,.3,1), opacity 320ms',
                 }}
               >
-                <PlayerCard item={current} showDecal={exit} />
+                <PlayerCard
+                  item={current}
+                  showDecal={exit}
+                  onTap={() => {
+                    const owner = current?.owner;
+                    if (!owner?.id) return;
+                    haptic('light');
+                    go('user-profile', { id: owner.id, fallback: owner });
+                  }}
+                />
               </div>
             </>
           )}

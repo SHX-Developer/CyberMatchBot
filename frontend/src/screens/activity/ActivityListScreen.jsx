@@ -115,6 +115,13 @@ export function ActivityListScreen({ go, section, onOpenChat }) {
     }
   };
 
+  const openProfile = (item) => {
+    const id = getId(item);
+    if (!id) return;
+    haptic('light');
+    go('user-profile', { id, fallback: { id, nickname: item.nickname, avatar_data_url: item.avatar_data_url } });
+  };
+
   const onWrite = async (item) => {
     const id = getId(item);
     if (!id || busyId) return;
@@ -209,13 +216,27 @@ export function ActivityListScreen({ go, section, onOpenChat }) {
                       i < items.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
                   }}
                 >
-                  <Avatar
-                    av={avSeed(id)}
-                    size={44}
-                    label={(name || '?')[0]?.toUpperCase()}
-                    src={item.avatar_data_url || undefined}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <button
+                    onClick={() => openProfile(item)}
+                    aria-label="Открыть профиль"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Avatar
+                      av={avSeed(id)}
+                      size={44}
+                      label={(name || '?')[0]?.toUpperCase()}
+                      src={item.avatar_data_url || undefined}
+                    />
+                  </button>
+                  <div
+                    onClick={() => openProfile(item)}
+                    style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                  >
                     <div
                       style={{
                         fontWeight: 700,
